@@ -207,6 +207,9 @@ const T = {
     completed: "✅ Заказ успешно выполнен.",
     failed: "❌ Не удалось выполнить заказ. Средства возвращены на кошелёк.",
     refunded: "💸 Средства возвращены на кошелёк.",
+    order_expired: (n) => `⏰ Время на оплату заказа №${n} истекло (30 минут). Заказ отменён. Оформите его заново.`,
+    pay_within: "⏳ На оплату даётся 30 минут, затем заказ отменится.",
+    late_payment_credited: (n, s) => `⚠️ Оплата по заказу №${n} пришла после отмены заказа. Сумма ${s} сом зачислена на ваш баланс.`,
     insufficient_balance: "❌ Недостаточно средств на балансе.",
     kg_som: "сом",
     btn_referral: "🤝 Рефералка",
@@ -316,6 +319,9 @@ const T = {
     completed: "✅ Буйрутма ийгиликтүү аткарылды.",
     failed: "❌ Буйрутма аткарылган жок. Каражат капчыкка кайтарылды.",
     refunded: "💸 Каражат капчыкка кайтарылды.",
+    order_expired: (n) => `⏰ №${n} буйрутманы төлөө убактысы бүттү (30 мүнөт). Буйрутма жокко чыгарылды. Кайра түзүңүз.`,
+    pay_within: "⏳ Төлөөгө 30 мүнөт берилет, андан кийин буйрутма жокко чыгат.",
+    late_payment_credited: (n, s) => `⚠️ №${n} буйрутма боюнча төлөм буйрутма жокко чыгарылгандан кийин келди. ${s} сом балансыңызга кошулду.`,
     insufficient_balance: "❌ Баланста каражат жетишсиз.",
     kg_som: "сом",
     btn_referral: "🤝 Рефералка",
@@ -1203,6 +1209,52 @@ async function finalizeOrderPaid(db, order) {
 
 /* ================= ORDERS ================= */
 
+/* Время на оплату заказа. Не оплатил за 30 минут — заказ отменяется. */
+const ORDER_PAY_WINDOW_MS = 30 * 60 * 1000;
+
+function isOrderExpired(order) {
+  return !!(
+    order &&
+    order.status === "pending_payment" &&
+    order.paymentMethod !== "terminal_pending" && // оплата через терминал подтверждается админом вручную
+    order.expiresAt &&
+    Date.now() > new Date(order.expiresAt).getTime()
+  );
+}
+
+/* Отменяет неоплаченный заказ, удаляет сообщение с оплатой и сообщает покупателю. */
+async function expirePendingOrder(env, db, order) {
+  const fresh = await getOrder(db, order.internalId);
+  if (!fresh || fresh.status !== "pending_payment") return false;
+  fresh.status = "cancelled";
+  fresh.expired = true;
+  await saveOrder(db, fresh);
+  if (fresh.summaryMsg && fresh.summaryMsg.messageId) {
+    await deleteMessage(env, fresh.summaryMsg.chatId || fresh.userId, fresh.summaryMsg.messageId);
+  }
+  const u = await getUser(db, fresh.userId);
+  const lang = u.lang || "ru";
+  await sendMessage(env, fresh.userId, t(lang, "order_expired", fresh.orderNumber), backHomeKeyboard(lang));
+  return true;
+}
+
+async function expireStalePendingOrders(env, db) {
+  let n = 0;
+  let cursor;
+  do {
+    const list = await db.list({ prefix: "order:", cursor });
+    for (const k of list.keys) {
+      if (n >= 30) return n;
+      const o = await getJSON(db, k.name);
+      if (isOrderExpired(o)) {
+        if (await expirePendingOrder(env, db, o)) n++;
+      }
+    }
+    cursor = list.list_complete ? undefined : list.cursor;
+  } while (cursor);
+  return n;
+}
+
 async function createOrder(db, params) {
   // params: userId, category, itemId, itemName, price, discount, total, uidData, promoCode, items (optional cart lines)
   const internalId = crypto.randomUUID();
@@ -1225,6 +1277,7 @@ async function createOrder(db, params) {
       ? params.items.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, price: l.price, status: "pending", donixOrderId: null }))
       : undefined,
     status: "pending_payment",
+    expiresAt: new Date(Date.now() + ORDER_PAY_WINDOW_MS).toISOString(),
     donixOrderId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -2065,6 +2118,21 @@ async function handleCallbackQuery(env, db, cq) {
         return;
       }
       await answerCallback(env, cq.id);
+      // Отменяем прошлые неоплаченные Roblox-заказы этого пользователя и удаляем их сообщения,
+      // чтобы нельзя было держать несколько «оплатить» на один и тот же код.
+      const prevIds = (await getJSON(db, kvKeyUserOrders(userId), [])) || [];
+      for (const oid of prevIds.slice(0, 20)) {
+        const po = await getOrder(db, oid);
+        if (po && po.category === "roblox" && po.status === "pending_payment") {
+          po.status = "cancelled";
+          await saveOrder(db, po);
+          if (po.summaryMsg && po.summaryMsg.messageId) {
+            await deleteMessage(env, po.summaryMsg.chatId || chatId, po.summaryMsg.messageId);
+          }
+        }
+      }
+      // Удаляем старое сообщение со списком номиналов — вместо него придёт новое с оплатой.
+      await deleteMessage(env, chatId, messageId);
       await createRobloxOrder(env, db, lang, chatId, userId, prod);
       return;
     }
@@ -2200,6 +2268,11 @@ async function handleCallbackQuery(env, db, cq) {
         await answerCallback(env, cq.id);
         return;
       }
+      if (isOrderExpired(order)) {
+        await answerCallback(env, cq.id, t(lang, "order_expired", order.orderNumber), true);
+        await expirePendingOrder(env, db, order);
+        return;
+      }
       // pay from wallet
       const first = await idempotentOnce(db, "confirm", internalId);
       if (!first) {
@@ -2262,6 +2335,11 @@ async function handleCallbackQuery(env, db, cq) {
         await answerCallback(env, cq.id, t(lang, "invalid_input"), true);
         return;
       }
+      if (isOrderExpired(order)) {
+        await answerCallback(env, cq.id, t(lang, "order_expired", order.orderNumber), true);
+        await expirePendingOrder(env, db, order);
+        return;
+      }
       await answerCallback(env, cq.id);
 
       if (method === "bank") {
@@ -2308,6 +2386,8 @@ async function handleCallbackQuery(env, db, cq) {
       }
 
       if (method === "terminal") {
+        order.paymentMethod = "terminal_pending";
+        await saveOrder(db, order);
         const uidLines = Object.entries(order.uidData)
           .map(([k, v]) => `${k}: ${v}`)
           .join("\n");
@@ -2983,7 +3063,7 @@ async function sendOrderSummary(env, db, lang, chatId, userId, order, prompt) {
   const sent = await sendMessage(
     env,
     chatId,
-    `№ ${order.orderNumber}\n${prompt.text}\n\n${t(lang, "choose_payment_method")}`,
+    `№ ${order.orderNumber}\n${prompt.text}\n\n${t(lang, "choose_payment_method")}\n\n${t(lang, "pay_within")}`,
     paymentMethodKeyboard(lang, order.internalId)
   );
   if (!sent || !sent.ok) {
@@ -2991,6 +3071,12 @@ async function sendOrderSummary(env, db, lang, chatId, userId, order, prompt) {
     order.status = "cancelled";
     await saveOrder(db, order);
     await sendMessage(env, chatId, t(lang, "service_unavailable"), backHomeKeyboard(lang));
+    return;
+  }
+  // Запоминаем сообщение с оплатой, чтобы при выборе другого товара удалить его.
+  if (sent.result && sent.result.message_id) {
+    order.summaryMsg = { chatId, messageId: sent.result.message_id };
+    await saveOrder(db, order);
   }
 }
 
@@ -4997,6 +5083,18 @@ async function routePaymentWebhook(env, db, request, ctx) {
   // paymentId may refer to either a direct order payment or a wallet top-up.
   const order = await getOrder(db, paymentId);
   if (order) {
+    if (order.status === "cancelled") {
+      // Заказ отменён (истекло время или отмена), а деньги всё же пришли — зачисляем на баланс.
+      order.transactionId = transactionId;
+      order.paidAfterCancel = true;
+      await saveOrder(db, order);
+      await walletTopUpCredit(db, order.userId, order.total, `late_payment:${order.orderNumber}`);
+      await logEvent(db, "finik", `Заказ №${order.orderNumber} отменён, но оплачен — ${fmtSom(order.total)} сом зачислено на баланс`);
+      const lu = await getUser(db, order.userId);
+      const ll = lu.lang || "ru";
+      await sendMessage(env, order.userId, t(ll, "late_payment_credited", order.orderNumber, fmtSom(order.total)), backHomeKeyboard(ll));
+      return new Response("ok", { status: 200 });
+    }
     if (order.status !== "pending_payment") {
       return new Response("ok", { status: 200 }); // already processed
     }
@@ -5101,6 +5199,11 @@ export default {
     ctx.waitUntil(
       (async () => {
         try {
+          await expireStalePendingOrders(env, env.DB);
+        } catch (e) {
+          console.log("expireStalePendingOrders error", String(e));
+        }
+        try {
           await retryStuckPaidOrders(env, env.DB);
         } catch (e) {
           console.log("retryStuckPaidOrders error", String(e));
@@ -5112,6 +5215,10 @@ export default {
         }
         const markup = await env.DB.get("config:markup_percent");
         if (markup === null || markup === undefined) return;
+        // cron теперь запускается часто — цены синхронизируем не чаще раза в сутки
+        const lastSync = Number(await env.DB.get("config:last_price_sync")) || 0;
+        if (Date.now() - lastSync < 20 * 3600 * 1000) return;
+        await env.DB.put("config:last_price_sync", String(Date.now()));
         const r = await syncPricesFromDonix(env, markup);
         if (!r.ok) await notifyAdminDonix(env, "автообновление цен не удалось");
         else if (r.missing.length) await notifyAdminDonix(env, `цены обновлены, не найдены: ${r.missing.join(", ")}`);
