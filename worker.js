@@ -207,9 +207,6 @@ const T = {
     completed: "✅ Заказ успешно выполнен.",
     failed: "❌ Не удалось выполнить заказ. Средства возвращены на кошелёк.",
     refunded: "💸 Средства возвращены на кошелёк.",
-    order_expired: (n) => `⏰ Время на оплату заказа №${n} истекло (30 минут). Заказ отменён. Оформите его заново.`,
-    pay_within: "⏳ На оплату даётся 30 минут, затем заказ отменится.",
-    late_payment_credited: (n, s) => `⚠️ Оплата по заказу №${n} пришла после отмены заказа. Сумма ${s} сом зачислена на ваш баланс.`,
     insufficient_balance: "❌ Недостаточно средств на балансе.",
     kg_som: "сом",
     btn_referral: "🤝 Рефералка",
@@ -233,6 +230,11 @@ const T = {
     status_cancelled: "🔴 Отменён",
     status_failed: "🔴 Не выполнен",
     status_refunded: "🔴 Возврат средств",
+    partial_title: (n) => `⚠️ Заказ №${n} выполнен частично.`,
+    partial_done: "✅ Выполнено:",
+    partial_failed: "❌ Не выполнено (деньги возвращены на кошелёк):",
+    partial_refund_total: "💸 Возвращено на кошелёк",
+    balance_promo_ok: (a, b) => `🎁 Промокод активирован!\nНа баланс зачислено: +${a} сом\nВаш баланс: ${b} сом`,
   },
   kg: {
     main_menu: "Nurtilek Shop башкы менюсу 🛍",
@@ -319,9 +321,6 @@ const T = {
     completed: "✅ Буйрутма ийгиликтүү аткарылды.",
     failed: "❌ Буйрутма аткарылган жок. Каражат капчыкка кайтарылды.",
     refunded: "💸 Каражат капчыкка кайтарылды.",
-    order_expired: (n) => `⏰ №${n} буйрутманы төлөө убактысы бүттү (30 мүнөт). Буйрутма жокко чыгарылды. Кайра түзүңүз.`,
-    pay_within: "⏳ Төлөөгө 30 мүнөт берилет, андан кийин буйрутма жокко чыгат.",
-    late_payment_credited: (n, s) => `⚠️ №${n} буйрутма боюнча төлөм буйрутма жокко чыгарылгандан кийин келди. ${s} сом балансыңызга кошулду.`,
     insufficient_balance: "❌ Баланста каражат жетишсиз.",
     kg_som: "сом",
     btn_referral: "🤝 Рефералка",
@@ -345,6 +344,11 @@ const T = {
     status_cancelled: "🔴 Жокко чыгарылды",
     status_failed: "🔴 Аткарылган жок",
     status_refunded: "🔴 Каражат кайтарылды",
+    partial_title: (n) => `⚠️ №${n} буйрутма жарым-жартылай аткарылды.`,
+    partial_done: "✅ Аткарылды:",
+    partial_failed: "❌ Аткарылган жок (каражат капчыкка кайтарылды):",
+    partial_refund_total: "💸 Капчыкка кайтарылды",
+    balance_promo_ok: (a, b) => `🎁 Промокод активдештирилди!\nБалансыңызга кошулду: +${a} сом\nСиздин балансыңыз: ${b} сом`,
   },
 };
 
@@ -361,12 +365,14 @@ const WALLET_HISTORY_LABELS = {
     purchase: "🛒 Потрачено",
     refund: "💸 Возврат средств",
     referral: "🤝 Реферальный бонус",
+    promo: "🎁 Промокод",
   },
   kg: {
     topup: "➕ Толуктоо",
     purchase: "🛒 Коротулду",
     refund: "💸 Каражат кайтарылды",
     referral: "🤝 Реферал бонусу",
+    promo: "🎁 Промокод",
   },
 };
 function walletHistoryTypeLabel(lang, type) {
@@ -1209,52 +1215,6 @@ async function finalizeOrderPaid(db, order) {
 
 /* ================= ORDERS ================= */
 
-/* Время на оплату заказа. Не оплатил за 30 минут — заказ отменяется. */
-const ORDER_PAY_WINDOW_MS = 30 * 60 * 1000;
-
-function isOrderExpired(order) {
-  return !!(
-    order &&
-    order.status === "pending_payment" &&
-    order.paymentMethod !== "terminal_pending" && // оплата через терминал подтверждается админом вручную
-    order.expiresAt &&
-    Date.now() > new Date(order.expiresAt).getTime()
-  );
-}
-
-/* Отменяет неоплаченный заказ, удаляет сообщение с оплатой и сообщает покупателю. */
-async function expirePendingOrder(env, db, order) {
-  const fresh = await getOrder(db, order.internalId);
-  if (!fresh || fresh.status !== "pending_payment") return false;
-  fresh.status = "cancelled";
-  fresh.expired = true;
-  await saveOrder(db, fresh);
-  if (fresh.summaryMsg && fresh.summaryMsg.messageId) {
-    await deleteMessage(env, fresh.summaryMsg.chatId || fresh.userId, fresh.summaryMsg.messageId);
-  }
-  const u = await getUser(db, fresh.userId);
-  const lang = u.lang || "ru";
-  await sendMessage(env, fresh.userId, t(lang, "order_expired", fresh.orderNumber), backHomeKeyboard(lang));
-  return true;
-}
-
-async function expireStalePendingOrders(env, db) {
-  let n = 0;
-  let cursor;
-  do {
-    const list = await db.list({ prefix: "order:", cursor });
-    for (const k of list.keys) {
-      if (n >= 30) return n;
-      const o = await getJSON(db, k.name);
-      if (isOrderExpired(o)) {
-        if (await expirePendingOrder(env, db, o)) n++;
-      }
-    }
-    cursor = list.list_complete ? undefined : list.cursor;
-  } while (cursor);
-  return n;
-}
-
 async function createOrder(db, params) {
   // params: userId, category, itemId, itemName, price, discount, total, uidData, promoCode, items (optional cart lines)
   const internalId = crypto.randomUUID();
@@ -1277,7 +1237,6 @@ async function createOrder(db, params) {
       ? params.items.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, price: l.price, status: "pending", donixOrderId: null }))
       : undefined,
     status: "pending_payment",
-    expiresAt: new Date(Date.now() + ORDER_PAY_WINDOW_MS).toISOString(),
     donixOrderId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -2118,21 +2077,6 @@ async function handleCallbackQuery(env, db, cq) {
         return;
       }
       await answerCallback(env, cq.id);
-      // Отменяем прошлые неоплаченные Roblox-заказы этого пользователя и удаляем их сообщения,
-      // чтобы нельзя было держать несколько «оплатить» на один и тот же код.
-      const prevIds = (await getJSON(db, kvKeyUserOrders(userId), [])) || [];
-      for (const oid of prevIds.slice(0, 20)) {
-        const po = await getOrder(db, oid);
-        if (po && po.category === "roblox" && po.status === "pending_payment") {
-          po.status = "cancelled";
-          await saveOrder(db, po);
-          if (po.summaryMsg && po.summaryMsg.messageId) {
-            await deleteMessage(env, po.summaryMsg.chatId || chatId, po.summaryMsg.messageId);
-          }
-        }
-      }
-      // Удаляем старое сообщение со списком номиналов — вместо него придёт новое с оплатой.
-      await deleteMessage(env, chatId, messageId);
       await createRobloxOrder(env, db, lang, chatId, userId, prod);
       return;
     }
@@ -2268,11 +2212,6 @@ async function handleCallbackQuery(env, db, cq) {
         await answerCallback(env, cq.id);
         return;
       }
-      if (isOrderExpired(order)) {
-        await answerCallback(env, cq.id, t(lang, "order_expired", order.orderNumber), true);
-        await expirePendingOrder(env, db, order);
-        return;
-      }
       // pay from wallet
       const first = await idempotentOnce(db, "confirm", internalId);
       if (!first) {
@@ -2335,11 +2274,6 @@ async function handleCallbackQuery(env, db, cq) {
         await answerCallback(env, cq.id, t(lang, "invalid_input"), true);
         return;
       }
-      if (isOrderExpired(order)) {
-        await answerCallback(env, cq.id, t(lang, "order_expired", order.orderNumber), true);
-        await expirePendingOrder(env, db, order);
-        return;
-      }
       await answerCallback(env, cq.id);
 
       if (method === "bank") {
@@ -2386,8 +2320,6 @@ async function handleCallbackQuery(env, db, cq) {
       }
 
       if (method === "terminal") {
-        order.paymentMethod = "terminal_pending";
-        await saveOrder(db, order);
         const uidLines = Object.entries(order.uidData)
           .map(([k, v]) => `${k}: ${v}`)
           .join("\n");
@@ -2434,7 +2366,7 @@ async function handleCallbackQuery(env, db, cq) {
           const lines = list
             .slice(0, 15)
             .map((h) => {
-              const sign = h.type === "topup" || h.type === "refund" || h.type === "referral" ? "+" : "−";
+              const sign = h.type === "topup" || h.type === "refund" || h.type === "referral" || h.type === "promo" ? "+" : "−";
               return `${h.at.slice(0, 10)} — ${walletHistoryTypeLabel(lang, h.type)} — ${sign}${fmtSom(h.amount)} ${t(lang, "kg_som")}`;
             })
             .join("\n");
@@ -2808,8 +2740,56 @@ async function finalizeCartOrderIfDone(env, db, order, user, lang) {
     await sendCompletedReceipt(env, user.id, lang, order);
   } else {
     await restoreGiftPromo(db, order);
-    await sendMessage(env, user.id, t(lang, order.isGift ? "gift_failed" : "failed"), backHomeKeyboard(lang));
+    const report = buildPartialReport(lang, order);
+    if (report) {
+      await sendMessage(env, user.id, report, backHomeKeyboard(lang));
+    } else {
+      await sendMessage(env, user.id, t(lang, order.isGift ? "gift_failed" : "failed"), backHomeKeyboard(lang));
+    }
   }
+}
+
+/* Если часть корзины выполнена, а часть нет — подробный отчёт: что выдано, что не выдано
+   и сколько денег за это вернулось на кошелёк. Если выдано ничего — возвращает null
+   (тогда показывается обычное сообщение «Не удалось выполнить заказ»). */
+function buildPartialReport(lang, order) {
+  if (!order.items || order.items.length === 0) return null;
+  const factor = order.price > 0 ? order.total / order.price : 1;
+  const done = [];
+  const failed = [];
+  let refundTotal = 0;
+  for (const line of order.items) {
+    let okCount = 0;
+    let badCount = 0;
+    if (line.units && Object.keys(line.units).length > 0) {
+      for (const s of Object.values(line.units)) {
+        if (s === "completed") okCount++;
+        else badCount++;
+      }
+    } else {
+      const qty = Math.max(1, line.qty || 1);
+      if (line.status === "completed") okCount = qty;
+      else badCount = qty;
+    }
+    if (okCount > 0) done.push(`• ${escHtml(line.name)} × ${okCount}`);
+    if (badCount > 0) {
+      const refund = round2(line.price * factor * badCount);
+      refundTotal = round2(refundTotal + refund);
+      failed.push(`• ${escHtml(line.name)} × ${badCount} — ${fmtSom(refund)} ${t(lang, "kg_som")}`);
+    }
+  }
+  if (done.length === 0 || failed.length === 0) return null;
+  return [
+    t(lang, "partial_title", order.orderNumber),
+    "",
+    t(lang, "partial_done"),
+    ...done,
+    "",
+    t(lang, "partial_failed"),
+    ...failed,
+    "",
+    `${t(lang, "partial_refund_total")}: ${fmtSom(refundTotal)} ${t(lang, "kg_som")}`,
+  ].join("\n");
 }
 
 /* Отправляет в Donix следующий юнит из очереди — только если сейчас ни один юнит не выполняется. */
@@ -2978,6 +2958,7 @@ function giftPromoLabel(p) {
 
 function promoValText(p) {
   if (p.type === "gift") return giftPromoLabel(p);
+  if (p.type === "balance") return `💰 +${fmtSom(p.value)} сом на баланс`;
   if (p.type === "prices") {
     return `💲 ${(CATALOG[p.catKey] || {}).name || p.catKey} (особые цены, товаров: ${Object.keys(p.prices || {}).length})`;
   }
@@ -3063,7 +3044,7 @@ async function sendOrderSummary(env, db, lang, chatId, userId, order, prompt) {
   const sent = await sendMessage(
     env,
     chatId,
-    `№ ${order.orderNumber}\n${prompt.text}\n\n${t(lang, "choose_payment_method")}\n\n${t(lang, "pay_within")}`,
+    `№ ${order.orderNumber}\n${prompt.text}\n\n${t(lang, "choose_payment_method")}`,
     paymentMethodKeyboard(lang, order.internalId)
   );
   if (!sent || !sent.ok) {
@@ -3071,12 +3052,6 @@ async function sendOrderSummary(env, db, lang, chatId, userId, order, prompt) {
     order.status = "cancelled";
     await saveOrder(db, order);
     await sendMessage(env, chatId, t(lang, "service_unavailable"), backHomeKeyboard(lang));
-    return;
-  }
-  // Запоминаем сообщение с оплатой, чтобы при выборе другого товара удалить его.
-  if (sent.result && sent.result.message_id) {
-    order.summaryMsg = { chatId, messageId: sent.result.message_id };
-    await saveOrder(db, order);
   }
 }
 
@@ -3146,6 +3121,30 @@ function parseOrderNumArg(text, cmd) {
   const re = new RegExp("^\\/" + cmd + "(?:@\\w+)?[\\s:=\\-]*[№#]?\\s*(\\d+)", "i");
   const m = String(text || "").trim().match(re);
   return m ? m[1] : null;
+}
+
+/* Промокод на баланс: зачисляет сумму на кошелёк пользователя (один раз на аккаунт). */
+async function redeemBalancePromo(db, promo, userId) {
+  const key = `${promo.code}:${userId}`;
+  const first = await idempotentOnce(db, "balpromo", key);
+  if (!first) return { ok: false };
+  const fresh = await getJSON(db, kvKeyPromo(promo.code));
+  if (!fresh || !fresh.active || (fresh.usesLeft !== null && fresh.usesLeft <= 0)) {
+    await db.delete(kvKeyIdemp("balpromo", key));
+    return { ok: false };
+  }
+  if (fresh.usesLeft !== null) {
+    fresh.usesLeft = Math.max(0, fresh.usesLeft - 1);
+    await putJSON(db, kvKeyPromo(fresh.code), fresh);
+  }
+  await db.put(kvKeyPromoUse(fresh.code, userId), "1");
+  const amount = round2(fresh.value);
+  const user = await getUser(db, userId);
+  user.balance = round2(user.balance + amount);
+  await saveUser(db, user);
+  await addWalletHistory(db, userId, { type: "promo", amount, note: fresh.code });
+  await logEvent(db, "promo", `Промокод ${fresh.code}: +${fmtSom(amount)} сом пользователю ${userId}`);
+  return { ok: true, amount, balance: user.balance, usesLeft: fresh.usesLeft };
 }
 
 async function handleMessage(env, db, msg) {
@@ -3532,6 +3531,33 @@ async function handleMessage(env, db, msg) {
     }
     if (check.promo.type === "gift") {
       await startGiftRedeem(env, db, lang, chatId, userId, check.promo);
+      return;
+    }
+    if (check.promo.type === "balance") {
+      const r = await redeemBalancePromo(db, check.promo, userId);
+      if (!r.ok) {
+        await sendMessage(env, chatId, t(lang, "promo_invalid"), backHomeKeyboard(lang));
+        return;
+      }
+      await sendMessage(env, chatId, t(lang, "balance_promo_ok", fmtSom(r.amount), fmtSom(r.balance)), backHomeKeyboard(lang));
+      // Уведомление админу: кто и сколько получил по промокоду.
+      try {
+        const adminId = String(env.ADMIN_ID || "").split(/[,\s;]+/).map((x) => x.replace(/["']/g, "").trim()).filter(Boolean)[0];
+        if (adminId) {
+          await sendMessage(
+            env,
+            adminId,
+            [
+              `🎁 Промокод ${escHtml(check.promo.code)} активирован`,
+              `Пользователь: ${userId} (@${escHtml(user.username || "-")})`,
+              `Сумма: +${fmtSom(r.amount)} сом`,
+              `Осталось активаций: ${r.usesLeft === null ? "∞" : r.usesLeft}`,
+            ].join("\n")
+          );
+        }
+      } catch (e) {
+        console.log("balance promo admin notify error", String(e));
+      }
       return;
     }
     // Stored separately from the step-machine state so it isn't lost when the
@@ -4030,6 +4056,7 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
         [btn("♾ Вечный промокод", "admin:promonew:forever")],
         [btn("📅 Промокод на 1 год", "admin:promonew:year")],
         [btn("🎁 Подарочный (товар бесплатно)", "admin:giftnew")],
+        [btn("💰 Промокод на баланс (деньги)", "admin:balpromonew")],
         [btn("💲 Промокод с ценами на игру", "admin:pricenew")],
         [btn("🛠 Вручную", "admin:promonew:manual")],
         [btn("📋 Список промокодов", "admin:promolist")],
@@ -4059,6 +4086,24 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
         `• ${durationLine}`,
         "• Каждый аккаунт может применить его только 1 раз",
         "• Количество аккаунтов, которые могут его использовать — не ограничено",
+      ].join("\n"),
+      ikb([[btn("⬅️", "admin:promos")]])
+    );
+  } else if (a === "balpromonew") {
+    await setState(db, userId, { step: "admin_create_balpromo", data: {} });
+    await editMessage(
+      env,
+      chatId,
+      messageId,
+      [
+        "💰 Промокод на баланс",
+        "Покупатель вводит код — и сумма сразу зачисляется на его баланс в боте.",
+        "",
+        "Отправьте одним сообщением: КОД;СУММА;КОЛИЧЕСТВО",
+        "Сумма — в сомах, количество — сколько всего человек смогут активировать (кто успел — тот получил).",
+        "Пример: MONEY50;50;20  (по 50 сом, первые 20 человек)",
+        "Если количество не указать — будет 1.",
+        "Каждый аккаунт может активировать код только один раз.",
       ].join("\n"),
       ikb([[btn("⬅️", "admin:promos")]])
     );
@@ -4711,6 +4756,30 @@ async function handleAdminTextInput(env, db, msg, state, lang) {
     return;
   }
 
+  if (state.step === "admin_create_balpromo") {
+    const parts = text.split(";").map((p) => p.trim());
+    const code = (parts[0] || "").toUpperCase();
+    const amount = parseFloat((parts[1] || "").replace(",", "."));
+    const uses = parts[2] ? parseInt(parts[2], 10) : 1;
+    if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !Number.isFinite(amount) || amount <= 0 || amount > 1000000 || !Number.isFinite(uses) || uses < 1) {
+      await sendMessage(env, chatId, "Неверный формат. Отправьте: КОД;СУММА;КОЛИЧЕСТВО\nКод — латиница/цифры, от 3 символов. Пример: MONEY50;50;20");
+      return;
+    }
+    if (await getJSON(db, kvKeyPromo(code))) {
+      await sendMessage(env, chatId, `Промокод ${code} уже существует. Придумайте другой код.`);
+      return;
+    }
+    const promo = await createPromo(db, { code, type: "balance", value: round2(amount), uses, days: null, minSum: 0, onePerUser: true });
+    await clearState(db, userId);
+    await sendMessage(
+      env,
+      chatId,
+      ["✅ Промокод на баланс создан", `Код: ${promo.code}`, `Сумма: +${fmtSom(promo.value)} сом на баланс`, `Всего активаций: ${uses} (по 1 на аккаунт)`, `Итого может уйти: ${fmtSom(round2(promo.value * uses))} сом`].join("\n"),
+      adminMainKeyboard()
+    );
+    return;
+  }
+
   if (state.step === "admin_create_gift") {
     const parts = text.split(";").map((p) => p.trim());
     const code = (parts[0] || "").toUpperCase();
@@ -5083,18 +5152,6 @@ async function routePaymentWebhook(env, db, request, ctx) {
   // paymentId may refer to either a direct order payment or a wallet top-up.
   const order = await getOrder(db, paymentId);
   if (order) {
-    if (order.status === "cancelled") {
-      // Заказ отменён (истекло время или отмена), а деньги всё же пришли — зачисляем на баланс.
-      order.transactionId = transactionId;
-      order.paidAfterCancel = true;
-      await saveOrder(db, order);
-      await walletTopUpCredit(db, order.userId, order.total, `late_payment:${order.orderNumber}`);
-      await logEvent(db, "finik", `Заказ №${order.orderNumber} отменён, но оплачен — ${fmtSom(order.total)} сом зачислено на баланс`);
-      const lu = await getUser(db, order.userId);
-      const ll = lu.lang || "ru";
-      await sendMessage(env, order.userId, t(ll, "late_payment_credited", order.orderNumber, fmtSom(order.total)), backHomeKeyboard(ll));
-      return new Response("ok", { status: 200 });
-    }
     if (order.status !== "pending_payment") {
       return new Response("ok", { status: 200 }); // already processed
     }
@@ -5199,11 +5256,6 @@ export default {
     ctx.waitUntil(
       (async () => {
         try {
-          await expireStalePendingOrders(env, env.DB);
-        } catch (e) {
-          console.log("expireStalePendingOrders error", String(e));
-        }
-        try {
           await retryStuckPaidOrders(env, env.DB);
         } catch (e) {
           console.log("retryStuckPaidOrders error", String(e));
@@ -5215,10 +5267,6 @@ export default {
         }
         const markup = await env.DB.get("config:markup_percent");
         if (markup === null || markup === undefined) return;
-        // cron теперь запускается часто — цены синхронизируем не чаще раза в сутки
-        const lastSync = Number(await env.DB.get("config:last_price_sync")) || 0;
-        if (Date.now() - lastSync < 20 * 3600 * 1000) return;
-        await env.DB.put("config:last_price_sync", String(Date.now()));
         const r = await syncPricesFromDonix(env, markup);
         if (!r.ok) await notifyAdminDonix(env, "автообновление цен не удалось");
         else if (r.missing.length) await notifyAdminDonix(env, `цены обновлены, не найдены: ${r.missing.join(", ")}`);
