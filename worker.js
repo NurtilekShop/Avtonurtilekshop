@@ -1855,9 +1855,16 @@ const PASS_WARNING = "💥 Если вы ранее покупали этот п
 /* Подсказка при нажатии на товар (лимит Telegram для всплывающего окна — 200 символов). */
 function itemPopupText(item) {
   if (!item || !item.popup) return null;
-  const lines = [item.name, item.popup, `Цена: ${fmtSom(item.price)} сом`];
-  if (item.warn) lines.push("⚠️ Условия покупки — в тексте сообщения.");
-  lines.push("Добавлено в корзину ✅");
+  if (item.warn) {
+    // Всплывающее окно Telegram — максимум 200 символов, поэтому тут сжатая версия; полный текст — в сообщении.
+    return [
+      `${item.name} · ${fmtSom(item.price)} сом`,
+      item.popup,
+      "💥 Покупали этот пакет — второй раз не придёт. Не покупали — покупайте!",
+      "⚠️ Недоступен в игре, а купили повторно — деньги не возвращаются.",
+    ].join("\n").slice(0, 200);
+  }
+  const lines = [item.name, item.popup, `Цена: ${fmtSom(item.price)} сом`, "Добавлено в корзину ✅"];
   return lines.join("\n").slice(0, 200);
 }
 
@@ -3816,6 +3823,7 @@ function adminMainKeyboard() {
     [btn("🎮 Каталог и цены", "admin:catalog"), btn("🎟 Промокоды", "admin:promos")],
     [btn("🤝 Рефералка", "admin:referral")],
     [btn("📢 Рассылка", "admin:broadcast"), btn("💳 Баланс Donix", "admin:donixbalance")],
+    [btn("🟣 Баланс MVP", "admin:mvpbalance")],
     [btn("🔲 Roblox (коды)", "admin:rbx"), btn("🔗 SKU Donix", "admin:skus")],
     [btn("🛠 Настройки", "admin:settings"), btn("📋 Логи", "admin:logs")],
     [btn("🏠 Главное меню", "menu:home")],
@@ -4208,6 +4216,15 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
       for (let i = 0; i < list.length; i += 3500) await sendMessage(env, chatId, list.slice(i, i + 3500));
       await sendMessage(env, chatId, "Чтобы исправить ❌: /setsku ID_ТОВАРА SKU\nСбросить: /setsku ID_ТОВАРА -");
     }
+  } else if (a === "mvpbalance") {
+    const res = await mvpBalance(env);
+    const threshold = await getMvpLowBalanceThreshold(db);
+    const text = !env.SECOND_API_KEY
+      ? "🟣 MVP не настроен (нет SECOND_API_KEY)"
+      : res.ok && res.data
+        ? `🟣 Баланс MVP: ${res.data.balance} ${res.data.currency || "KGS"}\nПорог предупреждения: ${threshold > 0 ? threshold + " сом" : "выключен"}`
+        : `🟣 MVP: ${mvpErrText(res)}`;
+    await editMessage(env, chatId, messageId, escHtml(text), ikb([[btn("⬅️", "admin:home")]]));
   } else if (a === "donixbalance") {
     const res = await donixBalance(env);
     const text = res.ok ? `💳 Баланс Donix: ${JSON.stringify(res.data)}` : t(lang, "service_unavailable");
