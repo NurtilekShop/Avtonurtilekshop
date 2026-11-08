@@ -1850,13 +1850,13 @@ async function cartKeyboard(db, lang, catKey, cart) {
 }
 
 /* Text shown above the cart keyboard: prompt + a compact summary line of what's selected. */
-const PASS_WARNING = "⚠️ Если вы раньше уже покупали этот пропуск прокачки, второй раз купить его нельзя. Оформляя заказ, вы соглашаетесь с тем, что если у вас нет доступа к пропуску прокачки, деньги не возвращаются.";
+const PASS_WARNING = "💥 Если вы ранее покупали этот пакет, то на ваш аккаунт второй раз он не придёт. Если не покупали — смело покупайте.\n\n⚠️ Если в игре у вас недоступен этот пакет и вы купили его второй раз на тот же аккаунт, где у вас недоступен этот пакет, деньги не возвращаются.";
 
 /* Подсказка при нажатии на товар (лимит Telegram для всплывающего окна — 200 символов). */
 function itemPopupText(item) {
   if (!item || !item.popup) return null;
   const lines = [item.name, item.popup, `Цена: ${fmtSom(item.price)} сом`];
-  if (item.warn) lines.push("⚠️ Повторно купить нельзя; нет доступа — деньги не возвращаются.");
+  if (item.warn) lines.push("⚠️ Условия покупки — в тексте сообщения.");
   lines.push("Добавлено в корзину ✅");
   return lines.join("\n").slice(0, 200);
 }
@@ -1872,8 +1872,11 @@ async function cartText(db, lang, catKey, cart) {
     if (item && qty > 0) parts.push(`${item.name} ×${qty}`);
   }
   const summary = parts.length > 0 ? parts.join("     ") : t(lang, "cart_empty");
-  const hasWarn = Object.keys(items).some((id) => items[id] > 0 && byId[id] && byId[id].warn);
-  return [t(lang, "choose_product"), "", t(lang, "cart_title"), "", summary].concat(hasWarn ? ["", PASS_WARNING] : []).join("\n");
+  const warnItem = Object.keys(items).map((id) => (items[id] > 0 ? byId[id] : null)).find((i) => i && i.warn);
+  if (warnItem) {
+    return [t(lang, "choose_product"), "", warnItem.name, warnItem.popup, `Цена: ${fmtSom(warnItem.price)} сом`, PASS_WARNING].join("\n");
+  }
+  return [t(lang, "choose_product"), "", t(lang, "cart_title"), "", summary].join("\n");
 }
 
 /* Plain-text price list: each item on its own line, price written at the end. */
