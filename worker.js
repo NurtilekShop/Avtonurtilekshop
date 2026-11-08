@@ -4,7 +4,8 @@
  * Vars/secrets: BOT_TOKEN, DONIX_API_KEY, DONIX_WEBHOOK_SECRET, ADMIN_ID,
  *   FINIK_API_KEY, FINIK_PRIVATE_KEY, FINIK_PUBLIC_KEY, FINIK_ACCOUNT_ID,
  *   FINIK_ENV ("beta" or "prod"), APP_BASE_URL,
- *   REVIEWS_CHAT_ID (чат/канал, куда бот публикует выполненные покупки)
+ *   REVIEWS_CHAT_ID (чат/канал, куда бот публикует выполненные покупки),
+ *   SECOND_API_KEY (ключ MVP Resellers, rk_live_…), SECOND_WEBHOOK_SECRET (секрет подписи вебхуков MVP)
  */
 
 import { Signer } from "@mancho.devs/authorizer";
@@ -130,6 +131,7 @@ const T = {
     btn_codm: "🎯 Call of Duty Mobile",
     btn_genshin: "✨ Genshin Impact",
     btn_roblox: "🔲 Roblox",
+    btn_mvp_test: "🧪 MVP тест",
     btn_tg: "⭐ Telegram",
     btn_games: "🎮 Игры и сервисы",
     btn_wallet: "💰 Кошелёк",
@@ -244,6 +246,7 @@ const T = {
     btn_codm: "🎯 Call of Duty Mobile",
     btn_genshin: "✨ Genshin Impact",
     btn_roblox: "🔲 Roblox",
+    btn_mvp_test: "🧪 MVP тест",
     btn_tg: "⭐ Telegram",
     btn_games: "🎮 Оюндар жана кызматтар",
     btn_wallet: "💰 Капчык",
@@ -511,7 +514,29 @@ const CATALOG = {
       { id: "tgp_12m", name: "Premium 12 месяцев", price: 2999 },
     ],
   },
+  // Тестовая категория второго поставщика (MVP Resellers): ОДИН товар, чтобы проверить полный цикл.
+  // Кнопка в боте появляется только когда админ включил её в «Настройки» (config:mvp_test = on).
+  // provider: "mvp" -> выдача идёт в MVP; providerProductId — product_id из GET /v1/products
+  // (пример из документации MVP; проверить: /mvpproducts ff, изменить без деплоя: /setmvp ITEM_ID PRODUCT_ID).
+  // price — цена для клиента (в MVP этот товар по документации стоит 74 сом); меняется в «Каталог и цены».
+  mvp_test: {
+    validateNick: true,
+    name: "MVP тест",
+    inputType: "uid",
+    maxQty: 1,
+    items: [
+      { id: "mvp_ff_110", name: "💎 110 (MVP)", price: 80, provider: "mvp", providerProductId: "ff.cis.dia.110", fixed: true },
+    ],
+  },
 };
+
+// У каждого товара есть provider ("donix" по умолчанию или "mvp") и providerProductId (для "mvp").
+for (const cat of Object.values(CATALOG)) {
+  for (const it of cat.items) {
+    it.provider = it.provider === "mvp" ? "mvp" : "donix";
+    if (it.providerProductId === undefined) it.providerProductId = null;
+  }
+}
 
 /* ================= KV HELPERS ================= */
 
@@ -953,7 +978,7 @@ async function syncPricesFromDonix(env, markupPercent) {
       continue;
     }
     for (const item of cat.items) {
-      if (item.fixed) continue; // price set manually in CATALOG
+      if (item.fixed || itemProvider(item) === "mvp") continue; // price set manually in CATALOG / у MVP свои цены
       const sku = await resolveDonixSku(env, catKey, item.id, item.name);
       const base = sku && bySku.has(sku) ? Number(bySku.get(sku).price) : NaN;
       if (!Number.isFinite(base) || base <= 0) {
@@ -1732,6 +1757,7 @@ async function gamesMenuKeyboard(db, lang) {
   else items.push(tgBtn);
   const rows = twoPerRow(items);
   if (rbxOn) rows.push([tgBtn]);
+  if (await isMvpTestEnabled(db)) rows.push([btn(t(lang, "btn_mvp_test"), "cat:mvp_test")]);
   rows.push([btn(t(lang, "btn_home"), "menu:home")]);
   return ikb(rows);
 }
@@ -2095,6 +2121,11 @@ async function handleCallbackQuery(env, db, cq) {
         await editMessage(env, chatId, messageId, `${starsInfo}\n\n${promptText}`, starsQuickKeyboard(lang));
         return answerCallback(env, cq.id);
       }
+      if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) {
+        await clearCart(db, userId);
+        await editMessage(env, chatId, messageId, t(lang, "service_unavailable"), ikb([[btn(t(lang, "btn_back"), "menu:games")]]));
+        return answerCallback(env, cq.id);
+      }
       if (catKey === "freefire" && (await isFreefireMaintenance(db))) {
         await clearCart(db, userId);
         await editMessage(env, chatId, messageId, MAINTENANCE_TEXT[lang] || MAINTENANCE_TEXT.ru, ikb([[btn(t(lang, "btn_back"), "menu:games")]]));
@@ -2118,6 +2149,11 @@ async function handleCallbackQuery(env, db, cq) {
       return answerCallback(env, cq.id);
     }
 
+    if ((ns === "cartadd" || ns === "cartnext") && a === "mvp_test" && !(await isMvpTestEnabled(db))) {
+      await answerCallback(env, cq.id, t(lang, "service_unavailable"), true);
+      return;
+    }
+
     if ((ns === "cartadd" || ns === "cartnext") && a === "freefire" && (await isFreefireMaintenance(db))) {
       await answerCallback(env, cq.id, MAINTENANCE_TEXT[lang] || MAINTENANCE_TEXT.ru, true);
       return;
@@ -2135,7 +2171,13 @@ async function handleCallbackQuery(env, db, cq) {
       let cart = await getCart(db, userId);
       if (!cart || cart.catKey !== catKey) cart = { catKey, items: {} };
       const cur = cart.items[itemId] || 0;
-      if (cur >= 10) {
+      const maxQty = cat.maxQty || 10;
+      if (cur >= maxQty) {
+        await answerCallback(env, cq.id, cat.maxQty ? `❌ Максимум ${maxQty} шт. этого товара.` : t(lang, "cart_max_reached"), true);
+        return;
+      }
+      // Товары с maxQty (MVP): в корзине только один товар одной штукой.
+      if (cat.maxQty && Object.keys(cart.items).some((k) => k !== itemId && cart.items[k] > 0)) {
         await answerCallback(env, cq.id, t(lang, "cart_max_reached"), true);
         return;
       }
@@ -2540,6 +2582,10 @@ async function processDonixOrder(env, db, order, lang, chatId, isRetry = false) 
     }
     return;
   }
+  // MVP Resellers: выдача у второго поставщика (поле provider у товара).
+  if (orderProvider(order) === "mvp") {
+    return processMvpOrder(env, db, order, lang, chatId, isRetry);
+  }
   try {
     await processDonixOrderInner(env, db, order, lang, chatId, isRetry);
   } catch (e) {
@@ -2556,6 +2602,7 @@ async function retryPaidOrder(env, db, order) {
   if (!order || order.status !== "paid") return false;
   const buyer = await getUser(db, order.userId);
   await db.delete(kvKeyIdemp("donixcreate", order.internalId));
+  await db.delete(kvKeyIdemp("mvpcreate", order.internalId));
   await processDonixOrder(env, db, order, buyer.lang || "ru", order.userId, true);
   return true;
 }
@@ -3170,6 +3217,66 @@ async function handleMessage(env, db, msg) {
     return;
   }
 
+  // Admin: /setmvp ITEM_ID MVP_PRODUCT_ID  (правка product_id у MVP без деплоя; "-" сбрасывает)
+  if (text.startsWith("/setmvp") && isAdmin(env, userId)) {
+    const [, itemId, productId] = text.split(/\s+/);
+    if (!itemId || !productId) {
+      await sendMessage(env, chatId, "Формат: /setmvp ID_ТОВАРА PRODUCT_ID_MVP\nНапример: /setmvp mvp_ff_110 ff.cis.dia.110\nСписок: /mvpproducts ff");
+      return;
+    }
+    const item = Object.values(CATALOG).flatMap((c) => c.items).find((i) => i.id === itemId);
+    if (!item || itemProvider(item) !== "mvp") {
+      await sendMessage(env, chatId, `Товар ${itemId} не найден среди товаров MVP.`);
+      return;
+    }
+    if (productId === "-") {
+      await db.delete(`mvpov:${itemId}`);
+      await sendMessage(env, chatId, `product_id для ${itemId} сброшен (из каталога: ${item.providerProductId || "не задан"}).`);
+    } else {
+      await db.put(`mvpov:${itemId}`, productId);
+      await sendMessage(env, chatId, `✅ ${itemId} → MVP ${productId}`);
+    }
+    return;
+  }
+
+  // Admin: /mvpproducts [game_id]  (без аргумента — игры и число товаров; с game_id — товары и цены MVP)
+  if (/^\/mvpproducts/i.test(text) && isAdmin(env, userId)) {
+    const arg = (text.split(/\s+/)[1] || "").toLowerCase();
+    const r = await mvpRequest(env, "GET", "/products");
+    if (!r.ok || !r.data || !Array.isArray(r.data.data)) {
+      await sendMessage(env, chatId, `⚠️ MVP: ${escHtml(mvpErrText(r))}`);
+      return;
+    }
+    const list = r.data.data;
+    const lines = [];
+    if (!arg) {
+      const games = new Map();
+      for (const p of list) {
+        const g = p.game && p.game.id ? String(p.game.id) : "?";
+        const e = games.get(g) || { name: p.game && p.game.name ? p.game.name : g, n: 0 };
+        e.n++;
+        games.set(g, e);
+      }
+      lines.push("🟣 Игры в каталоге MVP:");
+      for (const [g, e] of games) lines.push(`${g} — ${e.name}: ${e.n} шт.`);
+      lines.push("", "Товары игры: /mvpproducts ID_ИГРЫ (например /mvpproducts ff)");
+    } else {
+      const sel = list.filter((p) => p.game && String(p.game.id).toLowerCase() === arg);
+      lines.push(`🟣 MVP «${arg}»: ${sel.length} шт. (product_id — название — цена, сом)`);
+      for (const p of sel) lines.push(`${p.product_id} — ${p.title} — ${p.price}`);
+    }
+    let cur = "";
+    for (const ln of lines) {
+      if ((cur + ln).length > 3500) {
+        await sendMessage(env, chatId, escHtml(cur));
+        cur = "";
+      }
+      cur += ln + "\n";
+    }
+    if (cur) await sendMessage(env, chatId, escHtml(cur));
+    return;
+  }
+
   // Admin: /ffmaint on|off  (техработы Free Fire)
   if (text.startsWith("/ffmaint") && isAdmin(env, userId)) {
     const arg = (text.split(/\s+/)[1] || "").toLowerCase();
@@ -3369,6 +3476,22 @@ async function handleMessage(env, db, msg) {
       // Free Fire и PUBG Mobile: проверяем ID через Donix и показываем ник.
       const validatingMsg = await sendMessage(env, chatId, t(lang, "validating"));
       const dropValidating = () => deleteMessage(env, chatId, validatingMsg && validatingMsg.result && validatingMsg.result.message_id);
+      const vItem = findItemBase(state.data.catKey, validationItemRef(state.data)[0]);
+      if (itemProvider(vItem) === "mvp") {
+        // Товар второго поставщика: проверяем ID через MVP и показываем ник.
+        const mv = await mvpValidateForItem(env, db, vItem, uid);
+        await dropValidating();
+        if (mv.state === "down") {
+          await sendMessage(env, chatId, t(lang, "service_unavailable"), backHomeKeyboard(lang));
+          await clearState(db, userId);
+          return;
+        }
+        if (mv.state === "invalid") {
+          await sendMessage(env, chatId, t(lang, "invalid_game_id"), ikb([[btn(t(lang, "btn_home"), "menu:home")]]));
+          return; // состояние сохраняем: можно сразу отправить ID ещё раз
+        }
+        uidData = mv.nick ? { UID: uid, "Ник": mv.nick } : { UID: uid };
+      } else {
       const sku = await resolveDonixSku(env, state.data.catKey, ...validationItemRef(state.data));
       if (!sku) {
         await dropValidating();
@@ -3399,6 +3522,7 @@ async function handleMessage(env, db, msg) {
         return; // состояние сохраняем: можно сразу отправить ID ещё раз
       }
       uidData = { UID: uid, "Ник": playerNick };
+      }
     } else {
       // Остальные игры и Telegram: без проверки ника.
       if (cat && cat.inputType === "tg_username") {
@@ -3675,6 +3799,7 @@ const CATALOG_LABELS = {
   genshin: "Genshin Impact",
   tg_stars: "Telegram Stars",
   tg_premium: "Telegram Premium",
+  mvp_test: "MVP тест (2-й поставщик)",
 };
 
 function adminCatalogListKeyboard() {
@@ -3882,14 +4007,22 @@ async function adminWalletsView(db, page) {
 /* ================= ADMIN: SETTINGS / LOGS ================= */
 
 async function adminSettingsView(env, db) {
-  const [ffMaint, markup, starRate, refPercent, ping, bal] = await Promise.all([
+  const [ffMaint, markup, starRate, refPercent, ping, bal, mvpBal, mvpThreshold, mvpTestOn] = await Promise.all([
     isFreefireMaintenance(db),
     db.get("config:markup_percent"),
     getEffectiveStarsPricePerStar(db),
     db.get(kvKeyConfig("referral_percent")),
     donixPing(env),
     donixBalance(env),
+    env.SECOND_API_KEY ? mvpBalance(env) : Promise.resolve(null),
+    getMvpLowBalanceThreshold(db),
+    isMvpTestEnabled(db),
   ]);
+  const mvpLine = !env.SECOND_API_KEY
+    ? "не настроен (нет SECOND_API_KEY)"
+    : mvpBal && mvpBal.ok && mvpBal.data
+      ? `${escHtml(mvpBal.data.balance)} ${escHtml(mvpBal.data.currency || "KGS")}`
+      : `❌ ${escHtml(mvpErrText(mvpBal))}`;
   const donixLine = ping.ok ? "✅ на связи" : `❌ недоступен (${donixErrText(ping)})`;
   const balLine = bal.ok ? escHtml(JSON.stringify(bal.data)) : "—";
   const text = [
@@ -3903,17 +4036,22 @@ async function adminSettingsView(env, db) {
     `Finik: ${env.FINIK_ENV === "prod" ? "prod (боевой)" : "beta (тестовый)"}`,
     `Donix: ${donixLine}`,
     `Баланс Donix: ${balLine}`,
+    `Баланс MVP: ${mvpLine}`,
+    `Порог баланса MVP: ${mvpThreshold > 0 ? mvpThreshold + " сом" : "выключен (0)"}`,
+    `MVP тест-товар в боте: ${mvpTestOn ? "ПОКАЗЫВАЕТСЯ 🧪" : "скрыт"}`,
   ].join("\n");
   const keyboard = ikb([
     [btn(ffMaint ? "✅ Выключить техработы FF" : "🛠 Включить техработы FF", "admin:ffmaint")],
     [btn("🔄 Обновить цены из Donix", "admin:syncnow")],
+    [btn(mvpTestOn ? "🧪 Скрыть MVP тест-товар" : "🧪 Показать MVP тест-товар", "admin:mvptest")],
+    [btn("✏️ Порог баланса MVP", "admin:mvpthreshold")],
     [btn("♻️ Обновить экран", "admin:settings")],
     [btn("⬅️", "admin:home")],
   ]);
   return { text, keyboard };
 }
 
-const LOG_TYPE_ICON = { error: "🔴", donix: "🟠", finik: "💳", webhook: "📨" };
+const LOG_TYPE_ICON = { error: "🔴", donix: "🟠", finik: "💳", webhook: "📨", mvp: "🟣" };
 
 async function adminLogsView(db) {
   const lines = ["📋 Логи"];
@@ -4013,6 +4151,10 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
           continue;
         }
         for (const item of cat.items) {
+          if (itemProvider(item) === "mvp") {
+            rows.push(`🟣 ${item.id} (${item.name}) → MVP: ${(await getMvpProductId(db, item)) || "НЕ ЗАДАН"}`);
+            continue;
+          }
           const sku = await resolveDonixSku(env, catKey, item.id, item.name);
           rows.push(`${sku ? "✅" : "❌"} ${item.id} (${item.name}) → ${sku || "НЕ НАЙДЕН"}`);
         }
@@ -4509,6 +4651,21 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
     await logEvent(db, "settings", `Техработы Free Fire: ${now ? "выключены" : "включены"}`);
     const view = await adminSettingsView(env, db);
     await editMessage(env, chatId, messageId, view.text, view.keyboard);
+  } else if (a === "mvptest") {
+    const now = await isMvpTestEnabled(db);
+    await db.put("config:mvp_test", now ? "off" : "on");
+    await logEvent(db, "settings", `MVP тест-товар: ${now ? "скрыт" : "показывается"}`);
+    const view = await adminSettingsView(env, db);
+    await editMessage(env, chatId, messageId, view.text, view.keyboard);
+  } else if (a === "mvpthreshold") {
+    await setState(db, userId, { step: "admin_mvp_threshold", data: {} });
+    await editMessage(
+      env,
+      chatId,
+      messageId,
+      "Отправьте порог баланса MVP в сомах (например 1000). Когда остаток станет ниже — придёт сообщение. 0 — выключить предупреждения.",
+      ikb([[btn("⬅️", "admin:settings")]])
+    );
   } else if (a === "syncnow") {
     const markup = await db.get("config:markup_percent");
     if (markup === null || markup === undefined) {
@@ -4904,6 +5061,19 @@ async function handleAdminTextInput(env, db, msg, state, lang) {
     return;
   }
 
+  if (state.step === "admin_mvp_threshold") {
+    const value = parseFloat(text.replace(",", "."));
+    if (!Number.isFinite(value) || value < 0) {
+      await sendMessage(env, chatId, "Неверное число. Пример: 1000 (0 — выключить)");
+      return;
+    }
+    await db.put(kvKeyConfig("mvp_low_balance"), String(value));
+    await db.delete("mvp:lowbal_at");
+    await clearState(db, userId);
+    await sendMessage(env, chatId, `✅ Порог баланса MVP: ${value > 0 ? value + " сом" : "выключен"}`, adminMainKeyboard());
+    return;
+  }
+
   if (state.step === "admin_referral_percent") {
     const value = parseFloat(text.replace(",", "."));
     if (!Number.isFinite(value) || value < 0) {
@@ -5005,6 +5175,451 @@ function extractDonixOrderInfo(payload) {
   return { externalId, status };
 }
 
+/* ================= MVP RESELLERS — ВТОРОЙ ПОСТАВЩИК =================
+   Документация: https://reseller.mvpshop.kg/mvp-api.md
+   Секреты (только env): SECOND_API_KEY — ключ rk_live_…, SECOND_WEBHOOK_SECRET — секрет подписи вебхуков.
+   Ключи и подписи никогда не пишутся в логи и сообщения. */
+
+const MVP_BASE = "https://reseller.mvpshop.kg/v1";
+const MVP_LOW_BALANCE_DEFAULT = 1000; // сом; используется, пока порог не задан в админ-панели
+const MVP_LOW_BALANCE_REPEAT_MS = 6 * 60 * 60 * 1000; // повторное предупреждение не чаще раза в 6 часов
+const MVP_EVENT_TTL_SEC = 7 * 24 * 60 * 60; // MVP повторяет доставку до 24 ч — храним id событий 7 суток
+
+const mvpSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---- Выбор поставщика ---- */
+
+function itemProvider(item) {
+  return item && item.provider === "mvp" ? "mvp" : "donix";
+}
+
+/* Поставщик заказа: берём из самого заказа, а если там нет — из каталога по первому товару. */
+function orderProvider(order) {
+  if (order && order.provider) return order.provider === "mvp" ? "mvp" : "donix";
+  const firstId = order && order.items && order.items[0] ? order.items[0].itemId : order && order.itemId;
+  return itemProvider(findItemBase(order && order.category, firstId));
+}
+
+/* product_id в MVP: сначала правка админа (/setmvp), затем providerProductId из каталога. */
+async function getMvpProductId(db, item) {
+  const ov = await db.get(`mvpov:${item.id}`);
+  return (ov && String(ov).trim()) || item.providerProductId || null;
+}
+
+async function isMvpTestEnabled(db) {
+  return (await db.get("config:mvp_test")) === "on";
+}
+
+async function getMvpLowBalanceThreshold(db) {
+  const v = await db.get(kvKeyConfig("mvp_low_balance"));
+  const n = v !== null && v !== undefined && v !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : MVP_LOW_BALANCE_DEFAULT;
+}
+
+/* ---- HTTP-клиент ---- */
+
+/* Возвращает { ok, status, data, error? }. Сеть/429/5xx повторяются (attempts), для заказов — с тем же Idempotency-Key. */
+async function mvpRequest(env, method, path, opts = {}) {
+  const { body = null, idempotencyKey = null, attempts = 1, timeoutMs = 20000 } = opts;
+  if (!env.SECOND_API_KEY) return { ok: false, status: 0, data: null, error: "SECOND_API_KEY не задан" };
+  const headers = { Authorization: `Bearer ${env.SECOND_API_KEY}`, Accept: "application/json" };
+  if (body) headers["Content-Type"] = "application/json";
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  let last = { ok: false, status: 0, data: null, error: "no attempt" };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(`${MVP_BASE}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const data = await res.json().catch(() => null);
+      last = { ok: res.ok, status: res.status, data };
+      const retryable = res.status === 429 || res.status >= 500;
+      if (res.ok || !retryable || attempt === attempts) return last;
+      const wait = Math.min(Number(res.headers.get("Retry-After")) || attempt, 5);
+      await mvpSleep(wait * 1000);
+    } catch (e) {
+      last = { ok: false, status: 0, data: null, error: String(e).slice(0, 150) };
+      if (attempt === attempts) return last;
+      await mvpSleep(attempt * 1000);
+    }
+  }
+  return last;
+}
+
+function mvpErrCode(r) {
+  const e = r && r.data && r.data.error;
+  if (e && e.code) return String(e.code);
+  if (r && r.status) return `http_${r.status}`;
+  return "network_error";
+}
+
+function mvpErrText(r) {
+  const e = r && r.data && r.data.error;
+  const parts = [mvpErrCode(r)];
+  if (e && e.message) parts.push(String(e.message).slice(0, 150));
+  if (e && e.request_id) parts.push(`request_id ${e.request_id}`);
+  if (r && r.error) parts.push(String(r.error));
+  return parts.join(" · ");
+}
+
+/* Можно повторять с тем же Idempotency-Key: сеть, таймаут, 429, 5xx, а также ошибки с retryable=true. */
+function mvpIsRetryable(r) {
+  if (!r) return true;
+  if (r.status === 0 || r.status === 429 || r.status >= 500) return true;
+  return !!(r.data && r.data.error && r.data.error.retryable === true);
+}
+
+/* GET /balance → { balance: "100.00", currency: "KGS", ... } */
+async function mvpBalance(env) {
+  return mvpRequest(env, "GET", "/balance");
+}
+
+/* POST /players/validate (деньги не списываются) */
+async function mvpValidatePlayerRaw(env, productId, fields) {
+  return mvpRequest(env, "POST", "/players/validate", { body: { product_id: productId, fields } });
+}
+
+/* POST /orders. Idempotency-Key и client_order_id выводятся из нашего internalId — одинаковы при всех повторах. */
+async function mvpCreateOrder(env, { internalId, productId, fields }) {
+  return mvpRequest(env, "POST", "/orders", {
+    idempotencyKey: `shop-${internalId}`,
+    body: { product_id: productId, fields, client_order_id: String(internalId) },
+    attempts: 3,
+  });
+}
+
+/* GET /orders/{number} */
+async function mvpGetOrder(env, number) {
+  return mvpRequest(env, "GET", `/orders/${encodeURIComponent(number)}`);
+}
+
+/* GET /orders?client_order_id=… → первый найденный заказ или null */
+async function mvpFindOrderByClientId(env, clientOrderId) {
+  const r = await mvpRequest(env, "GET", `/orders?client_order_id=${encodeURIComponent(clientOrderId)}`);
+  const found = r.ok && r.data && Array.isArray(r.data.data) ? r.data.data[0] : null;
+  return { ...r, order: found || null };
+}
+
+/* ---- Уведомления админу ---- */
+
+async function notifyAdminMvp(env, text, icon = "⚠️") {
+  if (env.DB) await logEvent(env.DB, "mvp", text);
+  if (!env.ADMIN_ID) return;
+  try {
+    await sendMessage(env, env.ADMIN_ID, `${icon} MVP: ${escHtml(text)}`.slice(0, 3900));
+  } catch (e) {
+    console.log("notifyAdminMvp error", String(e));
+  }
+}
+
+/* Остаток ниже порога → сообщение админу (не чаще раза в 6 часов). Автопополнения в API MVP нет — только уведомление. */
+async function mvpCheckLowBalance(env, db, balanceValue) {
+  const bal = Number(balanceValue);
+  if (!Number.isFinite(bal)) return;
+  const threshold = await getMvpLowBalanceThreshold(db);
+  if (!(threshold > 0)) return; // порог 0 = предупреждения выключены
+  if (bal >= threshold) {
+    await db.delete("mvp:lowbal_at");
+    return;
+  }
+  const last = Number(await db.get("mvp:lowbal_at")) || 0;
+  if (Date.now() - last < MVP_LOW_BALANCE_REPEAT_MS) return;
+  await db.put("mvp:lowbal_at", String(Date.now()));
+  await notifyAdminMvp(
+    env,
+    `баланс ${fmtSom(bal)} сом — ниже порога ${fmtSom(threshold)} сом. Пополните в кабинете: https://reseller.mvpshop.kg (раздел «Пополнить»).`,
+    "🔔"
+  );
+}
+
+async function mvpCronBalanceCheck(env, db) {
+  if (!env.SECOND_API_KEY) return;
+  const r = await mvpBalance(env);
+  if (!r.ok || !r.data) {
+    console.log("mvp balance check failed", mvpErrCode(r));
+    return;
+  }
+  await mvpCheckLowBalance(env, db, r.data.balance);
+}
+
+/* ---- Проверка ID игрока (показываем ник до оплаты) ---- */
+
+/* Возвращает { state: "ok" | "invalid" | "down", nick }. */
+async function mvpValidateForItem(env, db, item, uid) {
+  const productId = await getMvpProductId(db, item);
+  if (!productId) {
+    await notifyAdminMvp(env, `у товара ${item.id} не задан providerProductId. Используйте /setmvp ${item.id} PRODUCT_ID`);
+    return { state: "down", nick: null };
+  }
+  const r = await mvpValidatePlayerRaw(env, productId, { player_id: String(uid).trim() });
+  if (r.ok && r.data) {
+    if (r.data.valid === false) return { state: "invalid", nick: null };
+    const nick = r.data.player && r.data.player.name ? String(r.data.player.name) : null;
+    return { state: "ok", nick };
+  }
+  const code = mvpErrCode(r);
+  if (code === "invalid_player_id" || code === "player_region_mismatch" || code === "validation_error") {
+    return { state: "invalid", nick: null };
+  }
+  if (["invalid_api_key", "missing_api_key", "insufficient_scope", "ip_not_allowed", "account_blocked", "product_not_found", "product_unavailable"].includes(code)) {
+    await notifyAdminMvp(env, `проверка ID: ${mvpErrText(r)}`);
+  }
+  return { state: "down", nick: null }; // player_unverifiable, лимиты, сеть, 5xx — «сервис временно недоступен»
+}
+
+/* ---- Выдача заказа ---- */
+
+/* Безопасная обёртка: при исключении снимаем «уже отправлено», чтобы заказ можно было повторить
+   (/retryorder N или cron) — повтор не создаст второй заказ у MVP (тот же Idempotency-Key + поиск по client_order_id). */
+async function processMvpOrder(env, db, order, lang, chatId, isRetry = false) {
+  try {
+    await processMvpOrderInner(env, db, order, lang, chatId, isRetry);
+  } catch (e) {
+    console.log("processMvpOrder error", order.orderNumber, String(e).slice(0, 200));
+    await logEvent(db, "error", `заказ №${order.orderNumber} (MVP): ${String(e).slice(0, 200)}`);
+    await db.delete(kvKeyIdemp("mvpcreate", order.internalId));
+    await notifyAdminMvp(env, `заказ №${order.orderNumber}: ошибка при отправке в MVP (${String(e).slice(0, 200)}). Повтор: /retryorder ${order.orderNumber}`);
+  }
+}
+
+async function processMvpOrderInner(env, db, order, lang, chatId, isRetry) {
+  const first = await idempotentOnce(db, "mvpcreate", order.internalId);
+  if (!first) return;
+
+  // Заказ точно НЕ создан у MVP (деньги там не списаны) → закрываем и возвращаем деньги клиенту.
+  const failOrder = async (reason) => {
+    order.status = "failed";
+    if (order.items) order.items.forEach((l) => (l.status = "failed"));
+    await saveOrder(db, order);
+    const refundOk = await idempotentOnce(db, "refund", order.internalId);
+    if (refundOk) await walletRelease(db, order.userId, order.total, `order_failed:${order.orderNumber}`);
+    await restoreGiftPromo(db, order);
+    await notifyAdminMvp(env, `заказ №${order.orderNumber} не создан. ${reason}. Клиенту возвращено ${fmtSom(order.total)} сом.`);
+    await sendMessage(env, chatId, t(lang, order.isGift ? "gift_failed" : "failed"), backHomeKeyboard(lang));
+  };
+
+  const line0 = order.items && order.items[0] ? order.items[0] : null;
+  const item = findItemBase(order.category, line0 ? line0.itemId : order.itemId);
+  const productId = item ? await getMvpProductId(db, item) : null;
+  const playerId = donixUidFromData(order.uidData);
+  if (!productId) return failOrder(`нет providerProductId для ${order.itemId}. Используйте /setmvp ${order.itemId} PRODUCT_ID`);
+  if (!playerId) return failOrder("не найден ID игрока в заказе");
+  // В первой версии MVP-товары продаются по 1 шт. (один заказ MVP на один заказ в боте).
+  if (order.items && (order.items.length > 1 || order.items.some((l) => (l.qty || 1) > 1))) {
+    return failOrder("для MVP-товаров пока разрешена только 1 шт.");
+  }
+
+  let mvpOrder = null;
+  let balanceAfter = null;
+
+  if (isRetry) {
+    // Перед созданием спрашиваем MVP, нет ли уже заказа с нашим client_order_id.
+    const ex = await mvpFindOrderByClientId(env, order.internalId);
+    if (ex.order) mvpOrder = ex.order;
+  }
+
+  if (!mvpOrder) {
+    const r = await mvpCreateOrder(env, { internalId: order.internalId, productId, fields: { player_id: playerId } });
+    if (r.ok && r.data && r.data.order) {
+      mvpOrder = r.data.order;
+      balanceAfter = r.data.balance;
+    } else {
+      const code = mvpErrCode(r);
+      if (code === "duplicate_client_order_id" || code === "idempotency_conflict") {
+        const ex = await mvpFindOrderByClientId(env, order.internalId);
+        if (ex.order) mvpOrder = ex.order;
+        else return failOrder(`MVP: ${mvpErrText(r)}`);
+      } else if (mvpIsRetryable(r)) {
+        // Результат неизвестен (таймаут/5xx/503): деньги не трогаем, повтор безопасен (тот же ключ).
+        throw new Error(`MVP: ${mvpErrText(r)}`);
+      } else {
+        const hint = code === "insufficient_balance" ? " Пополните баланс MVP!" : "";
+        return failOrder(`MVP: ${mvpErrText(r)}.${hint}`);
+      }
+    }
+  }
+
+  // Перечитываем заказ: вебхук мог прийти раньше, чем мы дошли сюда, — финальный статус не затираем.
+  const fresh = (await getOrder(db, order.internalId)) || order;
+  fresh.provider = "mvp";
+  fresh.mvpOrderNumber = mvpOrder.number;
+  if (mvpOrder.price) fresh.providerCost = mvpOrder.price;
+  if (fresh.status === "paid") {
+    fresh.status = "processing";
+    if (fresh.items) fresh.items.forEach((l) => { if (l.status === "pending") l.status = "processing"; });
+  }
+  await saveOrder(db, fresh);
+
+  if (mvpOrder.price && Number(mvpOrder.price) > Number(fresh.total)) {
+    await notifyAdminMvp(env, `заказ №${fresh.orderNumber}: цена MVP ${mvpOrder.price} сом выше цены для клиента ${fmtSom(fresh.total)} сом (убыток). Измените цену в «Каталог и цены».`);
+  }
+  if (balanceAfter !== null && balanceAfter !== undefined) await mvpCheckLowBalance(env, db, balanceAfter);
+
+  // Ответ на повторный запрос мог вернуть уже финальный заказ.
+  if (mvpOrder.status === "completed" || mvpOrder.status === "failed") {
+    await handleMvpFinalStatus(env, db, order.internalId, mvpOrder.status, mvpOrder);
+  }
+}
+
+/* Единая точка обработки финального статуса (вебхук и сверка по cron). Безопасна при повторах:
+   статус заказа в KV, возврат — через idempotentOnce("refund"), чек и сообщения — через свои метки. */
+async function handleMvpFinalStatus(env, db, internalId, status, mvpOrder) {
+  const order = internalId ? await getOrder(db, internalId) : null;
+  if (!order || orderProvider(order) !== "mvp") {
+    // Например, заказ создан вручную в кабинете MVP — это не наш заказ, админа не беспокоим.
+    await logEvent(db, "mvp", `событие по чужому/неизвестному заказу (${status})`);
+    return "unknown";
+  }
+  if (["completed", "failed", "refunded", "cancelled"].includes(order.status)) {
+    if (order.status !== status) {
+      await notifyAdminMvp(env, `заказ №${order.orderNumber}: у нас «${order.status}», а MVP сообщает «${status}». Проверьте вручную.`);
+    }
+    return "already_final";
+  }
+  if (order.status !== "paid" && order.status !== "processing") {
+    await logEvent(db, "mvp", `заказ №${order.orderNumber} в статусе «${order.status}», событие ${status} пропущено`);
+    return "skipped";
+  }
+
+  const user = await getUser(db, order.userId);
+  const lang = user.lang || "ru";
+  order.provider = "mvp";
+  if (mvpOrder && mvpOrder.number && !order.mvpOrderNumber) order.mvpOrderNumber = mvpOrder.number;
+  if (mvpOrder && mvpOrder.price && !order.providerCost) order.providerCost = mvpOrder.price;
+
+  if (status === "completed") {
+    order.status = "completed";
+    if (order.items) order.items.forEach((l) => (l.status = "completed"));
+    await saveOrder(db, order);
+    if (await idempotentOnce(db, "mvpreceipt", order.internalId)) {
+      await sendCompletedReceipt(env, user.id, lang, order); // «✅ Заказ успешно выполнен» + отзыв, как у Donix
+    }
+    return "completed";
+  }
+
+  // failed: MVP уже вернул деньги себе на баланс, мы возвращаем клиенту на кошелёк в боте
+  const failure = mvpOrder && mvpOrder.failure ? mvpOrder.failure : null;
+  order.status = "failed";
+  order.failureCode = failure && failure.code ? String(failure.code) : null;
+  if (order.items) order.items.forEach((l) => (l.status = "failed"));
+  await saveOrder(db, order);
+  const refundOk = await idempotentOnce(db, "refund", order.internalId);
+  if (refundOk) await walletRelease(db, order.userId, order.total, `mvp_failed:${order.orderNumber}`);
+  await restoreGiftPromo(db, order);
+  if (await idempotentOnce(db, "mvpfailmsg", order.internalId)) {
+    await sendMessage(env, user.id, t(lang, order.isGift ? "gift_failed" : "failed"), backHomeKeyboard(lang));
+    const why = failure ? `${failure.code || "?"}${failure.message ? ": " + String(failure.message).slice(0, 150) : ""}` : "причина не указана";
+    await notifyAdminMvp(env, `заказ №${order.orderNumber} (MVP #${order.mvpOrderNumber || "?"}) не выполнен — ${why}. Клиенту возвращено ${fmtSom(order.total)} сом на кошелёк.`, "❌");
+  }
+  return "failed";
+}
+
+/* Сверка с MVP для заказа в «processing» (если вебхук не дошёл). Источник истины — GET /orders/{number}. */
+async function mvpReconcileOrder(env, db, order) {
+  let r;
+  let mo = null;
+  if (order.mvpOrderNumber) {
+    r = await mvpGetOrder(env, order.mvpOrderNumber);
+    mo = r.ok && r.data && r.data.number ? r.data : null;
+  } else {
+    r = await mvpFindOrderByClientId(env, order.internalId);
+    mo = r.order;
+  }
+  if (!mo) return { updated: false, error: mvpErrText(r) };
+  if (mo.status === "completed" || mo.status === "failed") {
+    await handleMvpFinalStatus(env, db, order.internalId, mo.status, mo);
+    return { updated: true };
+  }
+  return { updated: false };
+}
+
+/* ---- Вебхук ---- */
+
+/* X-Signature: t=<unix>,v1=<hex>; v1 = HMAC-SHA256(секрет, t + "." + сырое_тело); допуск по времени — 5 минут. */
+async function verifyMvpSignature(env, request, rawBody) {
+  const secret = env.SECOND_WEBHOOK_SECRET ? String(env.SECOND_WEBHOOK_SECRET).trim() : "";
+  if (!secret) return { ok: false, reason: "SECOND_WEBHOOK_SECRET не задан" };
+  const header = request.headers.get("X-Signature") || "";
+  const parts = {};
+  for (const p of header.split(",")) {
+    const i = p.indexOf("=");
+    if (i > 0) parts[p.slice(0, i).trim()] = p.slice(i + 1).trim();
+  }
+  const ts = Number(parts.t);
+  if (!parts.t || !parts.v1 || !Number.isFinite(ts)) return { ok: false, reason: "нет или неверный заголовок X-Signature" };
+  if (Math.abs(Date.now() / 1000 - ts) > 300) return { ok: false, reason: "метка времени отличается больше чем на 5 минут" };
+  const received = parts.v1.toLowerCase();
+  // Секрет в кабинете выглядит как "whsec_…": принимаем его с префиксом и без (как и у Donix).
+  const variants = [secret, /^whsec_/i.test(secret) ? secret.replace(/^whsec_/i, "") : "whsec_" + secret];
+  for (const key of variants) {
+    const computed = await donixHmacHex(key, `${parts.t}.${rawBody}`);
+    let diff = computed.length ^ received.length;
+    for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ (received.charCodeAt(i) || 0);
+    if (diff === 0) return { ok: true };
+  }
+  return { ok: false, reason: "подпись не совпала (неверный SECOND_WEBHOOK_SECRET?)" };
+}
+
+async function processMvpEvent(env, db, event, eventId, type) {
+  if (type === "webhook.test") {
+    await notifyAdminMvp(env, "тестовое событие получено, подпись верна — вебхук настроен правильно.", "✅");
+    return;
+  }
+  if (type !== "order.completed" && type !== "order.failed") {
+    await logEvent(db, "webhook", `MVP: событие ${String(type).slice(0, 40)} пропущено`);
+    return;
+  }
+  const evKey = eventId ? `mvpevt:${eventId}` : null;
+  if (evKey && (await db.get(evKey))) return; // эта доставка уже обработана (повтор MVP)
+
+  const mo = event && event.data && event.data.order;
+  if (!mo) {
+    await logEvent(db, "webhook", `MVP ${type}: нет data.order`);
+    return;
+  }
+  const status = type === "order.completed" ? "completed" : "failed";
+  if (mo.status && mo.status !== status) {
+    await notifyAdminMvp(env, `событие ${type}, но статус заказа в нём «${mo.status}» — пропущено, ничего не изменено (MVP #${mo.number}).`);
+    return;
+  }
+  await logEvent(db, "webhook", `MVP: заказ #${mo.number} → ${status}`);
+  await handleMvpFinalStatus(env, db, mo.client_order_id || null, status, mo);
+  if (evKey) await db.put(evKey, "1", { expirationTtl: MVP_EVENT_TTL_SEC });
+}
+
+async function routeMvpWebhook(env, db, request, ctx) {
+  const rawBody = await request.text();
+  const verification = await verifyMvpSignature(env, request, rawBody);
+  if (!verification.ok) {
+    await logEvent(db, "webhook", `MVP вебхук отклонён: ${verification.reason}`);
+    return new Response("invalid signature", { status: 401 });
+  }
+  let event;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return new Response("bad request", { status: 400 });
+  }
+  const eventId = request.headers.get("X-Event-Id") || (event && event.id) || null;
+  const type = (event && event.type) || request.headers.get("X-Event-Type") || "";
+
+  // Быстро отвечаем 2xx, всё тяжёлое — после ответа.
+  const work = (async () => {
+    try {
+      await processMvpEvent(env, db, event, eventId, type);
+    } catch (e) {
+      console.log("mvp-webhook handler error", String(e).slice(0, 200));
+      await logEvent(db, "error", `MVP вебхук, обработчик: ${String(e).slice(0, 200)}`);
+    }
+  })();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(work);
+  else await work;
+  return new Response("ok", { status: 200 });
+}
+
 /* ================= ROUTE HANDLERS ================= */
 
 async function routeTelegramWebhook(env, db, request) {
@@ -5080,6 +5695,15 @@ async function syncProcessingOrders(env, db) {
     if (report.checked >= 40) break;
     const order = await getJSON(db, k.name);
     if (!order) continue;
+    if (orderProvider(order) === "mvp") {
+      // Заказы MVP сверяем с MVP (GET /orders/{number}), Donix про них ничего не знает.
+      if (order.status !== "processing") continue;
+      report.checked++;
+      const mr = await mvpReconcileOrder(env, db, order);
+      if (mr.updated) report.updated++;
+      else if (mr.error) report.errors.push(`MVP №${order.orderNumber}: ${mr.error}`);
+      continue;
+    }
     const hasOpenLine = order.items && order.items.some((l) => !["completed", "failed", "refunded"].includes(l.status));
     // «processing» — обычный случай; «completed» с незакрытой позицией — следствие гонки вебхуков.
     if (order.status !== "processing" && !(order.status === "completed" && hasOpenLine && !order.closedManually)) continue;
@@ -5244,6 +5868,10 @@ export default {
       return routeDonixWebhook(env, db, request);
     }
 
+    if (request.method === "POST" && url.pathname === "/mvp-webhook") {
+      return routeMvpWebhook(env, db, request, ctx);
+    }
+
     if (request.method === "POST" && url.pathname === "/payment-webhook") {
       return routePaymentWebhook(env, db, request, ctx);
     }
@@ -5264,6 +5892,11 @@ export default {
           await syncProcessingOrders(env, env.DB);
         } catch (e) {
           console.log("syncProcessingOrders error", String(e));
+        }
+        try {
+          await mvpCronBalanceCheck(env, env.DB);
+        } catch (e) {
+          console.log("mvpCronBalanceCheck error", String(e));
         }
         const markup = await env.DB.get("config:markup_percent");
         if (markup === null || markup === undefined) return;
