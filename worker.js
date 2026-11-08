@@ -400,9 +400,20 @@ const CATALOG = {
       { id: "ff_1166", name: "💎 1166", price: 745, sku: "1166-алмазов", fixed: true },
       { id: "ff_2398", name: "💎 2398", price: 1459, sku: "2398-алмазов", fixed: true },
       { id: "ff_6160", name: "💎 6160", price: 3702, sku: "6160-алмазов", fixed: true },
-      { id: "ff_lite_week", name: "🔹 Lite Ваучер (90💎)", price: 39, sku: "ваучер-на-неделю-лайт", fixed: true },
-      { id: "ff_week", name: "🔹 Ваучер на неделю (450💎)", price: 149, sku: "ваучер-на-неделю", fixed: true },
-      { id: "ff_month", name: "🔹 Ваучер на месяц (2600💎)", price: 532, sku: "ваучер-на-месяц", fixed: true },
+      { id: "ff_lite_week", name: "🔹 Lite Ваучер (90💎)", price: 39, sku: "ваучер-на-неделю-лайт", fixed: true,
+        popup: "Сразу после покупки вам начисляется 20 алмазов, и 7 дней вы будете получать по 10 алмазов." },
+      { id: "ff_week", name: "🔹 Ваучер на неделю (450💎)", price: 149, sku: "ваучер-на-неделю", fixed: true,
+        popup: "Сразу после покупки вы получаете 100 алмазов, 7 дней подряд будете получать по 50 алмазов." },
+      { id: "ff_month", name: "🔹 Ваучер на месяц (2600💎)", price: 532, sku: "ваучер-на-месяц", fixed: true,
+        popup: "Вы получаете сразу при пополнении 500 алмазов, а последующие 30 дней будете получать по 70 алмазов." },
+      // Пропуск прокачки — второй поставщик (MVP). Цена MVP (себестоимость): 28 / 49 / 49 / 49 / 49 / 72 сом.
+      // popup — подсказка при нажатии («В игре» — сколько это стоит алмазами в игре), warn — показывать условия без возврата.
+      { id: "ff_lvl6", name: "🎫 Пропуск прокачки 6 lvl", price: 65, provider: "mvp", providerProductId: "ff.cis.lvl.6", fixed: true, popup: "💎 В игре: 120", warn: true },
+      { id: "ff_lvl10", name: "🎫 Пропуск прокачки 10 lvl", price: 89, provider: "mvp", providerProductId: "ff.cis.lvl.10", fixed: true, popup: "💎 В игре: 200", warn: true },
+      { id: "ff_lvl15", name: "🎫 Пропуск прокачки 15 lvl", price: 89, provider: "mvp", providerProductId: "ff.cis.lvl.15", fixed: true, popup: "💎 В игре: 200", warn: true },
+      { id: "ff_lvl20", name: "🎫 Пропуск прокачки 20 lvl", price: 89, provider: "mvp", providerProductId: "ff.cis.lvl.20", fixed: true, popup: "💎 В игре: 200", warn: true },
+      { id: "ff_lvl25", name: "🎫 Пропуск прокачки 25 lvl", price: 89, provider: "mvp", providerProductId: "ff.cis.lvl.25", fixed: true, popup: "💎 В игре: 200", warn: true },
+      { id: "ff_lvl30", name: "🎫 Пропуск прокачки 30 lvl", price: 120, provider: "mvp", providerProductId: "ff.cis.lvl.30", fixed: true, popup: "💎 В игре: 350", warn: true },
     ],
   },
   pubg_uc: {
@@ -1839,6 +1850,17 @@ async function cartKeyboard(db, lang, catKey, cart) {
 }
 
 /* Text shown above the cart keyboard: prompt + a compact summary line of what's selected. */
+const PASS_WARNING = "⚠️ Если вы раньше уже покупали этот пропуск прокачки, второй раз купить его нельзя. Оформляя заказ, вы соглашаетесь с тем, что если у вас нет доступа к пропуску прокачки, деньги не возвращаются.";
+
+/* Подсказка при нажатии на товар (лимит Telegram для всплывающего окна — 200 символов). */
+function itemPopupText(item) {
+  if (!item || !item.popup) return null;
+  const lines = [item.name, item.popup, `Цена: ${fmtSom(item.price)} сом`];
+  if (item.warn) lines.push("⚠️ Повторно купить нельзя; нет доступа — деньги не возвращаются.");
+  lines.push("Добавлено в корзину ✅");
+  return lines.join("\n").slice(0, 200);
+}
+
 async function cartText(db, lang, catKey, cart) {
   const resolvedItems = await getResolvedItems(db, catKey);
   const items = cart && cart.catKey === catKey ? cart.items : {};
@@ -1850,7 +1872,8 @@ async function cartText(db, lang, catKey, cart) {
     if (item && qty > 0) parts.push(`${item.name} ×${qty}`);
   }
   const summary = parts.length > 0 ? parts.join("     ") : t(lang, "cart_empty");
-  return [t(lang, "choose_product"), "", t(lang, "cart_title"), "", summary].join("\n");
+  const hasWarn = Object.keys(items).some((id) => items[id] > 0 && byId[id] && byId[id].warn);
+  return [t(lang, "choose_product"), "", t(lang, "cart_title"), "", summary].concat(hasWarn ? ["", PASS_WARNING] : []).join("\n");
 }
 
 /* Plain-text price list: each item on its own line, price written at the end. */
@@ -2171,14 +2194,20 @@ async function handleCallbackQuery(env, db, cq) {
       let cart = await getCart(db, userId);
       if (!cart || cart.catKey !== catKey) cart = { catKey, items: {} };
       const cur = cart.items[itemId] || 0;
-      const maxQty = cat.maxQty || 10;
-      if (cur >= maxQty) {
-        await answerCallback(env, cq.id, cat.maxQty ? `❌ Максимум ${maxQty} шт. этого товара.` : t(lang, "cart_max_reached"), true);
+      if (cur >= 10) {
+        await answerCallback(env, cq.id, t(lang, "cart_max_reached"), true);
         return;
       }
-      // Товары с maxQty (MVP): в корзине только один товар одной штукой.
-      if (cat.maxQty && Object.keys(cart.items).some((k) => k !== itemId && cart.items[k] > 0)) {
-        await answerCallback(env, cq.id, t(lang, "cart_max_reached"), true);
+      // Товары второго поставщика (MVP) покупаются отдельным заказом, по 1 шт., без других товаров в корзине.
+      const inCart = Object.keys(cart.items).filter((k) => cart.items[k] > 0);
+      const mvpInCart = inCart.some((k) => itemProvider(findItemBase(catKey, k)) === "mvp");
+      if (itemProvider(item) === "mvp") {
+        if (cur >= 1 || inCart.some((k) => k !== itemId)) {
+          await answerCallback(env, cq.id, "🎫 Этот товар покупается отдельным заказом, 1 шт. Нажмите «Сброс», если хотите выбрать другой.", true);
+          return;
+        }
+      } else if (mvpInCart) {
+        await answerCallback(env, cq.id, "🎫 Пропуск прокачки покупается отдельным заказом. Нажмите «Сброс», чтобы выбрать другой товар.", true);
         return;
       }
       cart.items[itemId] = cur + 1;
@@ -2186,7 +2215,8 @@ async function handleCallbackQuery(env, db, cq) {
       const kb = await cartKeyboard(db, lang, catKey, cart);
       const text = await cartText(db, lang, catKey, cart);
       await editMessage(env, chatId, messageId, text, kb);
-      return answerCallback(env, cq.id);
+      const popup = itemPopupText(item);
+      return popup ? answerCallback(env, cq.id, popup, true) : answerCallback(env, cq.id);
     }
 
     if (ns === "cartreset") {
