@@ -132,8 +132,22 @@ const T = {
     btn_genshin: "✨ Genshin Impact",
     btn_roblox: "🔲 Roblox",
     btn_mvp_test: "🧪 MVP тест",
+    btn_hsr: "🚂 Honkai: Star Rail",
+    btn_arena: "🪖 Arena Breakout",
+    btn_rivals: "🦸 Marvel Rivals",
+    btn_oxide: "🏝 Oxide Survival",
+    btn_discord: "💬 Discord",
+    btn_steam: "🎮 Steam",
     btn_tg: "⭐ Telegram",
     btn_games: "🎮 Игры и сервисы",
+    enter_player_id_generic: "Введите ID игрока:",
+    enter_discord_id: "Введите данные аккаунта Discord (логин / ID):",
+    enter_steam_login: "Введите логин Steam (account name):",
+    steam_choose_amount: "Выберите сумму пополнения Steam в долларах или введите свою:",
+    steam_custom_btn: "✏️ Своя сумма",
+    steam_custom_prompt: (min, max) => `Напишите сумму в долларах (от ${min} до ${max}), например 7.5:`,
+    steam_bad_amount: (min, max) => `❌ Введите число от ${min} до ${max}.`,
+    steam_rate_line: (r) => `Курс: ${r} сом за $1`,
     btn_wallet: "💰 Кошелёк",
     btn_orders: "📦 Мои заказы",
     btn_promo: "🎟 Промокод",
@@ -247,8 +261,22 @@ const T = {
     btn_genshin: "✨ Genshin Impact",
     btn_roblox: "🔲 Roblox",
     btn_mvp_test: "🧪 MVP тест",
+    btn_hsr: "🚂 Honkai: Star Rail",
+    btn_arena: "🪖 Arena Breakout",
+    btn_rivals: "🦸 Marvel Rivals",
+    btn_oxide: "🏝 Oxide Survival",
+    btn_discord: "💬 Discord",
+    btn_steam: "🎮 Steam",
     btn_tg: "⭐ Telegram",
     btn_games: "🎮 Оюндар жана кызматтар",
+    enter_player_id_generic: "Оюнчунун ID киргизиңиз:",
+    enter_discord_id: "Discord аккаунтунун маалыматын киргизиңиз (логин / ID):",
+    enter_steam_login: "Steam логинин киргизиңиз (account name):",
+    steam_choose_amount: "Steam толуктоо суммасын доллар менен тандаңыз же өзүңүз киргизиңиз:",
+    steam_custom_btn: "✏️ Өз суммам",
+    steam_custom_prompt: (min, max) => `Доллар менен сумманы жазыңыз (${min}ден ${max} чейин), мисалы 7.5:`,
+    steam_bad_amount: (min, max) => `❌ ${min}ден ${max} чейинки санды киргизиңиз.`,
+    steam_rate_line: (r) => `Курс: $1 = ${r} сом`,
     btn_wallet: "💰 Капчык",
     btn_orders: "📦 Менин буйрутмаларым",
     btn_promo: "🎟 Промокод",
@@ -523,6 +551,86 @@ const CATALOG = {
       { id: "tgp_3m", name: "Premium 3 месяца", price: 1260 },
       { id: "tgp_6m", name: "Premium 6 месяцев", price: 1700 },
       { id: "tgp_12m", name: "Premium 12 месяцев", price: 2999 },
+    ],
+  },
+  hsr: {
+    name: "Honkai: Star Rail",
+    inputType: "mvp_id",
+    needsServer: true, // MVP требует поле server (asia/america/europe/tw_hk_mo)
+    items: [
+      { id: "hsr_60", name: "60 Осколков", price: 104, provider: "mvp", providerProductId: "hsr.global.60_oskolkov", fixed: true },
+      { id: "hsr_330", name: "300+30 Осколков", price: 504, provider: "mvp", providerProductId: "hsr.global.300_30_oskolkov", fixed: true },
+      { id: "hsr_1090", name: "980+110 Осколков", price: 1378, provider: "mvp", providerProductId: "hsr.global.980_110_oskolkov", fixed: true },
+      { id: "hsr_2240", name: "1980+260 Осколков", price: 2623, provider: "mvp", providerProductId: "hsr.global.1980_260_oskolkov", fixed: true },
+      { id: "hsr_3880", name: "3280+600 Осколков", price: 4555, provider: "mvp", providerProductId: "hsr.global.3280_600_oskolkov", fixed: true },
+      { id: "hsr_8080", name: "6480+1600 Осколков", price: 9155, provider: "mvp", providerProductId: "hsr.global.6480_1600_oskolkov", fixed: true },
+      { id: "hsr_pass", name: "Пропуск снабжения экспресса", price: 504, provider: "mvp", providerProductId: "hsr.global.propusk_snabzheniya_ekspressa", fixed: true },
+    ],
+  },
+  arena: {
+    name: "Arena Breakout",
+    inputType: "mvp_id",
+    items: [
+      { id: "ab_66", name: "66 облигаций", price: 86, provider: "mvp", providerProductId: "arena.global.66_obligatsiy", fixed: true },
+      { id: "ab_335", name: "335 облигаций", price: 409, provider: "mvp", providerProductId: "arena.global.335_obligatsiy", fixed: true },
+      { id: "ab_675", name: "675 облигаций", price: 809, provider: "mvp", providerProductId: "arena.global.675_obligatsiy", fixed: true },
+      { id: "ab_1690", name: "1690 облигаций", price: 2001, provider: "mvp", providerProductId: "arena.global.1690_obligatsiy", fixed: true },
+      { id: "ab_3400", name: "3400 облигаций", price: 3971, provider: "mvp", providerProductId: "arena.global.3400_obligatsiy", fixed: true },
+      { id: "ab_6820", name: "6820 облигаций", price: 7850, provider: "mvp", providerProductId: "arena.global.6820_obligatsiy", fixed: true },
+      { id: "ab_starter", name: "Набор новичка", price: 78, provider: "mvp", providerProductId: "arena.global.nabor_novichka", fixed: true },
+      { id: "ab_bp_ext", name: "Расширенный ежемесячный БП", price: 96, provider: "mvp", providerProductId: "arena.global.rasshirennyy_ezhemesyachnyy_bp", fixed: true },
+      { id: "ab_bullet", name: "Пуленепробиваемый ящик + привилегии (30 дней)", price: 234, provider: "mvp", providerProductId: "arena.global.puleneprobivaemyy_yaschik_privilegii_30_dney", fixed: true },
+      { id: "ab_bp_prem", name: "Премиальный ежемесячный БП", price: 367, provider: "mvp", providerProductId: "arena.global.premialnyy_ezhemesyachnyy_bp", fixed: true },
+      { id: "ab_comp", name: "Композитный ящик + привилегии (30 дней)", price: 685, provider: "mvp", providerProductId: "arena.global.kompozitnyy_yaschik_privilegii_30_dney", fixed: true },
+      { id: "ab_quarter", name: "Ежеквартальный набор пропусков", price: 1075, provider: "mvp", providerProductId: "arena.global.ezhekvartalnyy_nabor_propuskov", fixed: true },
+    ],
+  },
+  rivals: {
+    name: "Marvel Rivals",
+    inputType: "mvp_id",
+    items: [
+      { id: "mr_100", name: "100 Lattices", price: 101, provider: "mvp", providerProductId: "rivals.global.100_lattices", fixed: true },
+      { id: "mr_500", name: "500 Lattices", price: 501, provider: "mvp", providerProductId: "rivals.global.500_lattices", fixed: true },
+      { id: "mr_1000", name: "1000 Lattices", price: 960, provider: "mvp", providerProductId: "rivals.global.1000_lattices", fixed: true },
+      { id: "mr_2180", name: "2180 Lattices", price: 1809, provider: "mvp", providerProductId: "rivals.global.2180_lattices", fixed: true },
+      { id: "mr_5680", name: "5680 Lattices", price: 4650, provider: "mvp", providerProductId: "rivals.global.5680_lattices", fixed: true },
+      { id: "mr_11680", name: "11680 Lattices", price: 9650, provider: "mvp", providerProductId: "rivals.global.11680_lattices", fixed: true },
+    ],
+  },
+  oxide: {
+    name: "Oxide Survival Island",
+    inputType: "mvp_id",
+    items: [
+      { id: "ox_50", name: "50 Монет", price: 236, provider: "mvp", providerProductId: "oxide.global.50_monet", fixed: true },
+      { id: "ox_135", name: "135 Монет", price: 583, provider: "mvp", providerProductId: "oxide.global.135_monet", fixed: true },
+      { id: "ox_290", name: "290 Монет (15% Выгоды)", price: 1154, provider: "mvp", providerProductId: "oxide.global.290_monet_15_vygody", fixed: true },
+      { id: "ox_630", name: "630 Монет (25% Выгоды)", price: 2284, provider: "mvp", providerProductId: "oxide.global.630_monet_25_vygody", fixed: true },
+      { id: "ox_1675", name: "1675 Монет (30% Выгоды)", price: 5606, provider: "mvp", providerProductId: "oxide.global.1675_monet_30_vygody", fixed: true },
+      { id: "ox_3550", name: "3550 Монет (40% Выгоды)", price: 11113, provider: "mvp", providerProductId: "oxide.global.3550_monet_40_vygody", fixed: true },
+      { id: "ox_elite", name: "Elite + Боевой пропуск", price: 1604, provider: "mvp", providerProductId: "oxide.global.elite_boevoy_propusk", fixed: true },
+    ],
+  },
+  discord: {
+    name: "Discord",
+    inputType: "discord_id",
+    noInput: true, // ID не нужен: MVP выдаёт код в заказе
+    giftcard: true,
+    items: [
+      { id: "dc_basic", name: "Discord Basic — 1 месяц", price: 491, provider: "mvp", providerProductId: "discord.global.discord_basic_1_mesyats", fixed: true },
+      { id: "dc_nitro1", name: "Discord Nitro — 1 месяц", price: 982, provider: "mvp", providerProductId: "discord.global.discord_nitro_1_mesyats", fixed: true },
+      { id: "dc_nitro12", name: "Discord Nitro — 12 месяцев", price: 9350, provider: "mvp", providerProductId: "discord.global.discord_nitro_12_mesyatsev", fixed: true },
+    ],
+  },
+  // Steam: сумма в долларах вводится кнопкой или текстом; price = курс сом за $1 (меняется в «Каталог и цены»).
+  steam: {
+    name: "Steam",
+    inputType: "steam_login",
+    steam: true,
+    min: 0.2,
+    max: 1000,
+    quick: [1, 2, 3, 5, 10, 15],
+    items: [
+      { id: "steam_usd", name: "Steam $", price: 98, provider: "mvp", providerProductId: "steam.global.wallet_usd", fixed: true },
     ],
   },
   // Тестовая категория второго поставщика (MVP Resellers): ОДИН товар, чтобы проверить полный цикл.
@@ -1763,11 +1871,18 @@ async function gamesMenuKeyboard(db, lang) {
     btn(t(lang, "btn_codm"), "cat:codm"),
     btn(t(lang, "btn_genshin"), "cat:genshin"),
   ];
-  const tgBtn = btn(t(lang, "btn_tg"), "menu:tg");
   if (rbxOn) items.push(btn(t(lang, "btn_roblox"), "cat:roblox"));
-  else items.push(tgBtn);
+  items.push(
+    btn(t(lang, "btn_hsr"), "cat:hsr"),
+    btn(t(lang, "btn_arena"), "cat:arena"),
+    btn(t(lang, "btn_rivals"), "cat:rivals"),
+    btn(t(lang, "btn_oxide"), "cat:oxide")
+  );
   const rows = twoPerRow(items);
-  if (rbxOn) rows.push([tgBtn]);
+  // Сервисы всегда в самом низу, каждый отдельной строкой: Telegram, Discord, Steam.
+  rows.push([btn(t(lang, "btn_tg"), "menu:tg")]);
+  rows.push([btn(t(lang, "btn_discord"), "cat:discord")]);
+  rows.push([btn(t(lang, "btn_steam"), "cat:steam")]);
   if (await isMvpTestEnabled(db)) rows.push([btn(t(lang, "btn_mvp_test"), "cat:mvp_test")]);
   rows.push([btn(t(lang, "btn_home"), "menu:home")]);
   return ikb(rows);
@@ -1811,6 +1926,54 @@ async function createStarsOrder(env, db, lang, chatId, userId, username, amount)
     promoCode: prompt.promoCode,
     // Без items: Stars уходят в Donix ОДНИМ заказом с quantity (см. processDonixOrderInner).
   });
+  await clearState(db, userId);
+  await sendOrderSummary(env, db, lang, chatId, userId, order, prompt);
+}
+
+const HSR_SERVERS = { asia: "Asia", america: "America", europe: "Europe", tw_hk_mo: "TW/HK/MO" };
+function serverKeyboard(lang) {
+  const b = Object.entries(HSR_SERVERS).map(([k, v]) => btn(v, `srv:${k}`));
+  return ikb([...twoPerRow(b), [btn(t(lang, "btn_home"), "menu:home")]]);
+}
+async function discordShopView(db, lang) {
+  const items = await getResolvedItems(db, "discord");
+  const rows = items.map((i) => [btn(`${i.name} — ${fmtSom(i.price)} ${t(lang, "kg_som")}`, `dcbuy:${i.id}`)]);
+  rows.push([btn(t(lang, "btn_back"), "menu:games")]);
+  return { text: lang === "kg" ? "💬 Discord\n\nТоварды тандаңыз. Код төлөмдөн кийин дароо келет:" : "💬 Discord\n\nВыберите товар. Код придёт сразу после оплаты:", keyboard: ikb(rows) };
+}
+function steamAmountText(a) {
+  return String(Math.round(Number(a) * 100) / 100);
+}
+async function steamRate(db) {
+  const it = await findItem(db, "steam", "steam_usd");
+  return it ? it.price : 98;
+}
+function steamQuickKeyboard(lang) {
+  const q = CATALOG.steam.quick;
+  const rows = [q.slice(0, 3).map((n) => btn(`$${n}`, `steam:${n}`)), q.slice(3, 6).map((n) => btn(`$${n}`, `steam:${n}`))];
+  rows.push([btn(t(lang, "steam_custom_btn"), "steam:custom")]);
+  rows.push([btn(t(lang, "btn_back"), "menu:games")]);
+  return ikb(rows);
+}
+async function createSteamOrder(env, db, lang, chatId, userId, login, amount) {
+  const rate = await steamRate(db);
+  const price = round2(amount * rate);
+  const uidData = { UID: login, "Сумма": `$${steamAmountText(amount)}` };
+  const stateData = { catKey: "steam", itemId: "steam_usd", itemName: `Steam $${steamAmountText(amount)}`, price };
+  const prompt = await buildOrderConfirmPrompt(env, db, lang, userId, stateData, uidData);
+  const order = await createOrder(db, {
+    userId,
+    category: "steam",
+    itemId: "steam_usd",
+    itemName: stateData.itemName,
+    price,
+    discount: prompt.discount,
+    total: prompt.total,
+    uidData,
+    promoCode: prompt.promoCode,
+  });
+  order.steamAmount = amount;
+  await saveOrder(db, order);
   await clearState(db, userId);
   await sendOrderSummary(env, db, lang, chatId, userId, order, prompt);
 }
@@ -2047,6 +2210,9 @@ async function getResolvedItems(db, catKey) {
 }
 
 function inputPromptKey(inputType, step) {
+  if (inputType === "mvp_id") return "enter_player_id_generic";
+  if (inputType === "discord_id") return "enter_discord_id";
+  if (inputType === "steam_login") return "enter_steam_login";
   if (inputType === "uid") return "enter_uid_ff";
   if (inputType === "pubg_id") return "enter_uid_pubg";
   if (inputType === "codm_id") return "enter_uid_codm";
@@ -2111,6 +2277,84 @@ async function handleCallbackQuery(env, db, cq) {
       if (!cat.quick.includes(amount)) return answerCallback(env, cq.id);
       await setState(db, userId, { step: "await_stars_username", data: { amount } });
       await editMessage(env, chatId, messageId, `⭐ ${amount} Stars\n\n${t(lang, "enter_username_tg")}`, backHomeKeyboard(lang));
+      return answerCallback(env, cq.id);
+    }
+
+    if (ns === "srv") {
+      const st = await getState(db, userId);
+      if (st.step !== "await_server" || !HSR_SERVERS[a]) return answerCallback(env, cq.id);
+      const uidData = { ...(st.data.uidData || {}), Server: a };
+      const prompt = await buildOrderConfirmPrompt(env, db, lang, userId, st.data, uidData);
+      const order = await createOrder(db, {
+        userId,
+        category: st.data.catKey,
+        itemId: st.data.itemId,
+        itemName: st.data.itemName,
+        price: st.data.price,
+        discount: prompt.discount,
+        total: prompt.total,
+        uidData,
+        promoCode: prompt.promoCode,
+        items: st.data.items,
+      });
+      await clearState(db, userId);
+      await answerCallback(env, cq.id);
+      await deleteMessage(env, chatId, messageId);
+      await sendOrderSummary(env, db, lang, chatId, userId, order, prompt);
+      return;
+    }
+
+    if (ns === "dcbuy") {
+      const item = await findItem(db, "discord", a);
+      if (!item) {
+        await answerCallback(env, cq.id, t(lang, "invalid_input"), true);
+        return;
+      }
+      await answerCallback(env, cq.id);
+      await deleteMessage(env, chatId, messageId);
+      const stateData = { catKey: "discord", itemId: item.id, itemName: item.name, price: item.price };
+      const prompt = await buildOrderConfirmPrompt(env, db, lang, userId, stateData, {});
+      prompt.text = prompt.text.replace(/^\s+/, "");
+      const order = await createOrder(db, {
+        userId,
+        category: "discord",
+        itemId: item.id,
+        itemName: item.name,
+        price: item.price,
+        discount: prompt.discount,
+        total: prompt.total,
+        uidData: {},
+        promoCode: prompt.promoCode,
+      });
+      await sendOrderSummary(env, db, lang, chatId, userId, order, prompt);
+      return;
+    }
+
+    if (ns === "cat" && a === "discord") {
+      await clearState(db, userId);
+      const view = await discordShopView(db, lang);
+      await editMessage(env, chatId, messageId, view.text, view.keyboard);
+      return answerCallback(env, cq.id);
+    }
+
+    if (ns === "steam") {
+      const cat = CATALOG.steam;
+      if (a === "custom") {
+        await setState(db, userId, { step: "await_steam_custom", data: {} });
+        await editMessage(env, chatId, messageId, t(lang, "steam_custom_prompt", cat.min, cat.max), ikb([[btn(t(lang, "btn_back"), "cat:steam")]]));
+        return answerCallback(env, cq.id);
+      }
+      const amount = Number(a);
+      if (!cat.quick.includes(amount)) return answerCallback(env, cq.id);
+      await setState(db, userId, { step: "await_steam_login", data: { amount } });
+      await editMessage(env, chatId, messageId, `🎮 Steam $${steamAmountText(amount)}\n\n${t(lang, "enter_steam_login")}`, backHomeKeyboard(lang));
+      return answerCallback(env, cq.id);
+    }
+
+    if (ns === "cat" && a === "steam") {
+      await setState(db, userId, { step: "await_steam_choice", data: {} });
+      const rate = await steamRate(db);
+      await editMessage(env, chatId, messageId, `🎮 Steam\n${t(lang, "steam_rate_line", fmtSom(rate))}\n\n${t(lang, "steam_choose_amount")}`, steamQuickKeyboard(lang));
       return answerCallback(env, cq.id);
     }
 
@@ -2510,8 +2754,8 @@ async function handleCallbackQuery(env, db, cq) {
           lines.push(`№ ${o.orderNumber}`);
           lines.push(`${o.itemName} — ${fmtSom(o.total)} ${t(lang, "kg_som")}`);
           lines.push(orderStatusLabel(lang, o.status));
-          if (o.category === "roblox" && o.status === "completed" && o.robloxCodes && o.robloxCodes.length) {
-            lines.push(`🔑 <code>${escHtml(o.robloxCodes[0])}</code>`);
+          if (o.status === "completed" && ((o.category === "roblox" && o.robloxCodes && o.robloxCodes.length) || (o.giftCodes && o.giftCodes.length))) {
+            lines.push(`🔑 <code>${escHtml((o.robloxCodes || o.giftCodes)[0])}</code>`);
           }
           lines.push("");
         }
@@ -3164,7 +3408,8 @@ async function buildOrderConfirmPrompt(env, db, lang, userId, stateData, uidData
   // The active promo code is kept in its own KV key (not in the step-machine state),
   // so it survives moving between menus/categories while the user picks a product.
   const activeCode = await db.get(kvKeyActivePromo(userId));
-  if (activeCode) {
+  // Steam продаётся без скидок: промокоды на него не действуют и не тратятся.
+  if (activeCode && stateData.catKey !== "steam") {
     const check = await validatePromo(db, activeCode, userId, price, { catKey: stateData.catKey, lines: stateData.items });
     // Промокод с особыми ценами применяется только если реально что-то удешевляет (иначе не тратим его).
     if (check.ok && !(check.promo.type === "prices" && check.discount <= 0)) {
@@ -3584,6 +3829,12 @@ async function handleMessage(env, db, msg) {
       }
     }
     state.data.uidData = uidData;
+    if (cat && cat.needsServer) {
+      state.step = "await_server";
+      await setState(db, userId, state);
+      await sendMessage(env, chatId, lang === "kg" ? "Серверди тандаңыз:" : "Выберите сервер:", serverKeyboard(lang));
+      return;
+    }
     await setState(db, userId, state);
     const prompt = await buildOrderConfirmPrompt(env, db, lang, userId, state.data, uidData);
     const order = await createOrder(db, {
@@ -3643,6 +3894,45 @@ async function handleMessage(env, db, msg) {
     });
     await clearState(db, userId);
     await sendOrderSummary(env, db, lang, chatId, userId, order, prompt);
+    return;
+  }
+
+  if (state.step === "await_steam_custom") {
+    const cat = CATALOG.steam;
+    const amount = /^\d+([.,]\d{1,2})?$/.test(text) ? Number(text.replace(",", ".")) : NaN;
+    if (!Number.isFinite(amount) || amount < cat.min || amount > cat.max) {
+      await sendMessage(env, chatId, t(lang, "steam_bad_amount", cat.min, cat.max));
+      return;
+    }
+    await setState(db, userId, { step: "await_steam_login", data: { amount } });
+    await sendMessage(env, chatId, `🎮 Steam $${steamAmountText(amount)}\n\n${t(lang, "enter_steam_login")}`, backHomeKeyboard(lang));
+    return;
+  }
+
+  if (state.step === "await_steam_login") {
+    const login = text.trim();
+    const amount = state.data && state.data.amount;
+    if (!amount) {
+      await clearState(db, userId);
+      await sendMessage(env, chatId, t(lang, "main_menu"), mainMenuKeyboard(lang));
+      return;
+    }
+    if (login.length < 2 || login.length > 64 || /\s/.test(login)) {
+      await sendMessage(env, chatId, t(lang, "invalid_input"));
+      return;
+    }
+    // Проверка логина до оплаты (деньги не списываются). Если проверить не удалось — заказ всё равно проверит MVP сам.
+    const stItem = CATALOG.steam.items[0];
+    const stPid = await getMvpProductId(db, stItem);
+    if (stPid) {
+      const vr = await mvpValidatePlayerRaw(env, stPid, { player_id: login, amount: steamAmountText(amount) });
+      const bad = (vr.ok && vr.data && vr.data.valid === false) || ["invalid_player_id", "player_region_mismatch"].includes(mvpErrCode(vr));
+      if (bad) {
+        await sendMessage(env, chatId, t(lang, "invalid_game_id"), backHomeKeyboard(lang));
+        return; // состояние сохраняем: можно отправить логин ещё раз
+      }
+    }
+    await createSteamOrder(env, db, lang, chatId, userId, login, amount);
     return;
   }
 
@@ -3842,6 +4132,12 @@ const CATALOG_LABELS = {
   genshin: "Genshin Impact",
   tg_stars: "Telegram Stars",
   tg_premium: "Telegram Premium",
+  hsr: "Honkai: Star Rail",
+  arena: "Arena Breakout",
+  rivals: "Marvel Rivals",
+  oxide: "Oxide Survival Island",
+  discord: "Discord",
+  steam: "Steam (курс за $1)",
   mvp_test: "MVP тест (2-й поставщик)",
 };
 
@@ -5249,7 +5545,8 @@ function itemProvider(item) {
 function orderProvider(order) {
   if (order && order.provider) return order.provider === "mvp" ? "mvp" : "donix";
   const firstId = order && order.items && order.items[0] ? order.items[0].itemId : order && order.itemId;
-  return itemProvider(findItemBase(order && order.category, firstId));
+  const cat0 = order && CATALOG[order.category];
+  return itemProvider(findItemBase(order && order.category, firstId) || (cat0 && cat0.steam ? cat0.items[0] : null));
 }
 
 /* product_id в MVP: сначала правка админа (/setmvp), затем providerProductId из каталога. */
@@ -5454,11 +5751,13 @@ async function processMvpOrderInner(env, db, order, lang, chatId, isRetry) {
   };
 
   const line0 = order.items && order.items[0] ? order.items[0] : null;
-  const item = findItemBase(order.category, line0 ? line0.itemId : order.itemId);
+  const item = findItemBase(order.category, line0 ? line0.itemId : order.itemId) || (CATALOG[order.category] && CATALOG[order.category].steam ? CATALOG[order.category].items[0] : null);
   const productId = item ? await getMvpProductId(db, item) : null;
   const playerId = donixUidFromData(order.uidData);
   if (!productId) return failOrder(`нет providerProductId для ${order.itemId}. Используйте /setmvp ${order.itemId} PRODUCT_ID`);
-  if (!playerId) return failOrder("не найден ID игрока в заказе");
+  const noInput = !!(CATALOG[order.category] && CATALOG[order.category].noInput);
+  if (!playerId && !noInput) return failOrder("не найден ID игрока в заказе");
+  if (order.category === "steam" && !(Number(order.steamAmount) > 0)) return failOrder("не указана сумма Steam");
   // В первой версии MVP-товары продаются по 1 шт. (один заказ MVP на один заказ в боте).
   if (order.items && (order.items.length > 1 || order.items.some((l) => (l.qty || 1) > 1))) {
     return failOrder("для MVP-товаров пока разрешена только 1 шт.");
@@ -5474,7 +5773,7 @@ async function processMvpOrderInner(env, db, order, lang, chatId, isRetry) {
   }
 
   if (!mvpOrder) {
-    const r = await mvpCreateOrder(env, { internalId: order.internalId, productId, fields: { player_id: playerId } });
+    const r = await mvpCreateOrder(env, { internalId: order.internalId, productId, fields: mvpOrderFields(order, playerId) });
     if (r.ok && r.data && r.data.order) {
       mvpOrder = r.data.order;
       balanceAfter = r.data.balance;
@@ -5516,6 +5815,41 @@ async function processMvpOrderInner(env, db, order, lang, chatId, isRetry) {
   }
 }
 
+/* Чек с кодом (Discord): код + кнопки «Скопировать» и «Активировать». */
+async function sendGiftCodeReceipt(env, userId, lang, order) {
+  await postPurchaseToReviewsChat(env, env.DB, order);
+  if (order.processingMsg && order.processingMsg.messageId) {
+    await deleteMessage(env, order.processingMsg.chatId || userId, order.processingMsg.messageId);
+  }
+  const code = order.giftCodes[0];
+  const url = "https://discord.com/gifts";
+  const text = [
+    t(lang, "completed"),
+    `№ ${order.orderNumber}`,
+    order.itemName,
+    "",
+    rbxT(lang, "🔑 Ваш код:", "🔑 Сиздин код:"),
+    `<code>${escHtml(code)}</code>`,
+    rbxT(lang, "<i>Нажмите на код, чтобы скопировать.</i>", "<i>Кодду басыңыз — көчүрүлөт.</i>"),
+    "",
+    rbxT(lang, `Активация: <a href="${url}">discord.com/gifts</a> (если код — ссылка, просто откройте её).`, `Активдештирүү: <a href="${url}">discord.com/gifts</a> (код шилтеме болсо — ачыңыз).`),
+  ].join("\n");
+  const copyRow = [{ text: rbxT(lang, "📋 Скопировать код", "📋 Кодду көчүрүү"), copy_text: { text: String(code).slice(0, 256) } }];
+  const restRows = [[btn(t(lang, "btn_home"), "menu:home")]];
+  let res = await sendMessage(env, userId, text, { inline_keyboard: [copyRow, ...restRows] });
+  if (!res || !res.ok) res = await sendMessage(env, userId, text, { inline_keyboard: restRows });
+}
+
+/* Поля заказа для MVP. Для Steam дополнительно передаётся сумма в долларах. */
+function mvpOrderFields(order, playerId) {
+  const cat = CATALOG[order.category];
+  if (cat && cat.noInput) return {}; // Discord: полей нет
+  const fields = { player_id: playerId };
+  if (order.category === "steam") fields.amount = steamAmountText(order.steamAmount); // MVP: все значения — строки
+  if (cat && cat.needsServer && order.uidData && order.uidData.Server) fields.server = String(order.uidData.Server);
+  return fields;
+}
+
 /* Единая точка обработки финального статуса (вебхук и сверка по cron). Безопасна при повторах:
    статус заказа в KV, возврат — через idempotentOnce("refund"), чек и сообщения — через свои метки. */
 async function handleMvpFinalStatus(env, db, internalId, status, mvpOrder) {
@@ -5543,11 +5877,26 @@ async function handleMvpFinalStatus(env, db, internalId, status, mvpOrder) {
   if (mvpOrder && mvpOrder.price && !order.providerCost) order.providerCost = mvpOrder.price;
 
   if (status === "completed") {
+    const catDef = CATALOG[order.category];
+    if (catDef && catDef.giftcard && !(order.giftCodes && order.giftCodes.length)) {
+      // Код лежит только в GET /orders/{number}; пока не получили — заказ остаётся «processing», cron повторит.
+      const gr = order.mvpOrderNumber ? await mvpGetOrder(env, order.mvpOrderNumber) : null;
+      const codes = gr && gr.ok && gr.data && Array.isArray(gr.data.codes) ? gr.data.codes.map(String).filter(Boolean) : [];
+      if (codes.length === 0) {
+        await logEvent(db, "mvp", `заказ №${order.orderNumber}: выполнен, но код пока не получен`);
+        if (await idempotentOnce(db, "mvpnocode", order.internalId)) {
+          await notifyAdminMvp(env, `заказ №${order.orderNumber} (MVP #${order.mvpOrderNumber || "?"}) выполнен, но код не получен. Бот повторит проверку сам; при необходимости: /checkorders`);
+        }
+        return "no_codes";
+      }
+      order.giftCodes = codes;
+    }
     order.status = "completed";
     if (order.items) order.items.forEach((l) => (l.status = "completed"));
     await saveOrder(db, order);
     if (await idempotentOnce(db, "mvpreceipt", order.internalId)) {
-      await sendCompletedReceipt(env, user.id, lang, order); // «✅ Заказ успешно выполнен» + отзыв, как у Donix
+      if (order.giftCodes && order.giftCodes.length) await sendGiftCodeReceipt(env, user.id, lang, order);
+      else await sendCompletedReceipt(env, user.id, lang, order); // «✅ Заказ успешно выполнен» + отзыв, как у Donix
     }
     return "completed";
   }
