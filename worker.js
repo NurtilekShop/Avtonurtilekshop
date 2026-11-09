@@ -2136,6 +2136,8 @@ async function handleCallbackQuery(env, db, cq) {
         return;
       }
       await answerCallback(env, cq.id);
+      // Старое сообщение со списком номиналов удаляем, чтобы оно не оставалось в чате.
+      await deleteMessage(env, chatId, messageId);
       await createRobloxOrder(env, db, lang, chatId, userId, prod);
       return;
     }
