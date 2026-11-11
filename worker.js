@@ -6203,6 +6203,13 @@ async function routePaymentWebhook(env, db, request, ctx) {
       try {
         const buyer = await getUser(db, order.userId);
         const buyerLang = buyer.lang || "ru";
+        if (order.guest && order.contact) {
+          try {
+            await sendMessage(env, env.ADMIN_ID, `🌐 Гостевой заказ №${order.orderNumber} оплачен (без Telegram)\nWhatsApp: ${order.contact}\nТовар: ${order.itemName}\nСумма: ${fmtSom(order.total)} сом`);
+          } catch (e) {
+            console.log("guest admin notify error", String(e));
+          }
+        }
         try {
           const procRes = await sendMessage(
             env,
@@ -6274,7 +6281,7 @@ const MA_IMG_IDX = "miniapp:imgidx";
 const MA_REVIEWS = "miniapp:reviews";
 const MA_CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, X-Init-Data",
+  "Access-Control-Allow-Headers": "Content-Type, X-Init-Data, X-Guest-Id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Max-Age": "86400",
 };
@@ -6394,7 +6401,7 @@ async function maValidateNick(env, db, catKey, item, uid) {
 }
 
 /* Создаёт заказ и платёж Finik. Возвращает { error } или { order, paymentUrl }. */
-async function maCreateOrder(env, db, tu, b) {
+async function maCreateOrder(env, db, tu, b, ctx) {
   const userId = tu.id;
   const user = await getUser(db, userId);
   const lang = user.lang || "ru";
@@ -6405,6 +6412,15 @@ async function maCreateOrder(env, db, tu, b) {
   if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) return { error: "unavailable" };
   if (catKey === "freefire" && (await isFreefireMaintenance(db))) return { error: "maintenance" };
   if (catKey === "tg_stars" && STARS_TEMP_DISABLED) return { error: "unavailable" };
+  // Гость: нужен WhatsApp для связи; товары с выдачей кода в чат бота и оплата с баланса недоступны.
+  let guestContact = null;
+  if (tu.guest) {
+    if (cat.noInput) return { error: "guest_unsupported" };
+    const c = clean(b.contact).replace(/[\s()-]/g, "");
+    if (!/^\+?\d{9,15}$/.test(c)) return { error: "bad_contact" };
+    guestContact = c.startsWith("+") ? c : "+" + c;
+    b.useBalance = false;
+  }
 
   const getUsername = () => {
     const u = clean(b.username);
@@ -6506,8 +6522,45 @@ async function maCreateOrder(env, db, tu, b) {
 
   const order = await createOrder(db, { userId, category: catKey, itemId, itemName, price, discount, total, uidData, promoCode, items: lines });
   order.source = "miniapp";
+  if (tu.guest) { order.guest = true; order.contact = guestContact; }
   if (steamAmount) order.steamAmount = steamAmount;
   await saveOrder(db, order);
+
+  if (b.useBalance) {
+    const fresh = await getUser(db, userId);
+    const paidOk = await walletReserve(db, fresh, order.total);
+    if (!paidOk) {
+      order.status = "cancelled";
+      await saveOrder(db, order);
+      return { error: "no_balance" };
+    }
+    order.status = "paid";
+    order.paymentMethod = "balance";
+    await saveOrder(db, order);
+    await finalizeOrderPaid(db, order);
+    const tail = (async () => {
+      try {
+        const buyerLang = fresh.lang || "ru";
+        try {
+          const procRes = await sendMessage(env, userId, `${t(buyerLang, "order_created", order.orderNumber)}\n${t(buyerLang, "processing")}`, backHomeKeyboard(buyerLang));
+          if (procRes && procRes.ok && procRes.result) {
+            order.processingMsg = { chatId: userId, messageId: procRes.result.message_id };
+            await saveOrder(db, order);
+          }
+        } catch (e) {
+          console.log("miniapp processing msg error", String(e));
+        }
+        await processDonixOrder(env, db, order, buyerLang, userId);
+      } catch (e) {
+        console.log("miniapp balance tail error", String(e));
+        await notifyAdminDonix(env, `заказ №${order.orderNumber} оплачен балансом, но не отправлен: ${String(e).slice(0, 200)}. /retryorder ${order.orderNumber}`);
+      }
+    })();
+    if (ctx && ctx.waitUntil) ctx.waitUntil(tail);
+    else await tail;
+    const after = await getUser(db, userId);
+    return { order, paid: true, balance: fmtSom(after.balance) };
+  }
 
   let payment;
   try {
@@ -6515,7 +6568,7 @@ async function maCreateOrder(env, db, tu, b) {
     payment = await createFinikPayment(env, {
       amount: round2(order.total),
       paymentId: order.internalId,
-      redirectUrl: botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
+      redirectUrl: tu.guest && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app#orders` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
       description: `Nurtilek Shop order ${order.orderNumber}`,
       lang,
     });
@@ -6531,7 +6584,7 @@ async function maCreateOrder(env, db, tu, b) {
   return { order, paymentUrl: payment.paymentUrl };
 }
 
-async function handleMiniApi(env, db, request) {
+async function handleMiniApi(env, db, request, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: MA_CORS });
@@ -6539,8 +6592,16 @@ async function handleMiniApi(env, db, request) {
     if (path === "/api/img" && request.method === "GET") return await maServeImg(db, url);
     if (path === "/api/state" && request.method === "GET") return maJson(await maState(db));
 
-    const tu = await maAuth(env, request);
+    let tu = await maAuth(env, request);
+    if (!tu) {
+      // Гость без Telegram (веб-версия): анонимный токен из браузера. Только покупка за Finik и просмотр своих заказов.
+      const gid = request.headers.get("X-Guest-Id") || "";
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(gid)) {
+        tu = { id: "g_" + gid.toLowerCase(), first_name: "Гость", guest: true };
+      }
+    }
     if (!tu) return maJson({ error: "auth" }, 401);
+    if (tu.guest && (path === "/api/topup" || path === "/api/review" || path.startsWith("/api/admin/"))) return maJson({ error: "auth" }, 403);
     const clean = (s) => String(s == null ? "" : s).trim();
     const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
 
@@ -6557,8 +6618,10 @@ async function handleMiniApi(env, db, request) {
         name: tu.first_name || tu.username || "Гость",
         id: String(tu.id),
         spent: fmtSom(u.spent || 0),
+        bal: fmtSom(u.balance || 0),
         earned: fmtSom(u.referralEarnings || 0),
-        refLink: bot ? `https://t.me/${bot}?start=ref_${tu.id}` : "",
+        refLink: bot && !tu.guest ? `https://t.me/${bot}?start=ref_${tu.id}` : "",
+        guest: !!tu.guest,
       });
     }
 
@@ -6569,9 +6632,53 @@ async function handleMiniApi(env, db, request) {
     }
 
     if (path === "/api/order" && request.method === "POST") {
-      const r = await maCreateOrder(env, db, tu, body);
+      const r = await maCreateOrder(env, db, tu, body, ctx);
       if (r.error) return maJson({ error: r.error }, 400);
-      return maJson({ orderNumber: r.order.orderNumber, paymentUrl: r.paymentUrl, total: r.order.total });
+      return maJson({ orderNumber: r.order.orderNumber, paymentUrl: r.paymentUrl || null, total: r.order.total, paid: !!r.paid, balance: r.balance });
+    }
+
+    if (path === "/api/topup" && request.method === "POST") {
+      // Пополнение баланса из мини-аппа: та же заявка topup:* и Finik-платёж, что и в боте;
+      // зачисление делает /payment-webhook (walletTopUpCredit), баланс общий с ботом.
+      const amount = Math.floor(Number(body.amount));
+      if (!Number.isFinite(amount) || amount < 10 || amount > 100000) return maJson({ error: "bad_amount" }, 400);
+      const u = await getUser(db, tu.id);
+      const lang = u.lang || "ru";
+      const topupId = crypto.randomUUID();
+      await putJSON(db, `topup:${topupId}`, {
+        topupId,
+        userId: tu.id,
+        amount,
+        status: "pending",
+        source: "miniapp",
+        createdAt: new Date().toISOString(),
+      });
+      let payment;
+      try {
+        const botName = await getBotUsername(env);
+        payment = await createFinikPayment(env, {
+          amount,
+          paymentId: topupId,
+          redirectUrl: botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
+          description: `Nurtilek Shop top-up ${topupId}`,
+          lang,
+        });
+      } catch (e) {
+        console.log("miniapp topup finik error", String(e));
+        payment = { ok: false };
+      }
+      if (!payment.ok || !payment.paymentUrl) return maJson({ error: "pay_error" }, 400);
+      try {
+        await sendMessage(
+          env,
+          env.ADMIN_ID,
+          `🧾 Новое пополнение из мини-аппа (ожидает оплаты)\nID: ${topupId}\nUser: ${tu.id} (@${u.username || tu.username || "-"})\nСумма: ${amount} сом`,
+          ikb([[btn("✅ Зачислить", `admin:topupok:${topupId}`), btn("❌ Отклонить", `admin:topupno:${topupId}`)]])
+        );
+      } catch (e) {
+        console.log("miniapp topup admin notify error", String(e));
+      }
+      return maJson({ paymentUrl: payment.paymentUrl, amount, topupId });
     }
 
     if (path === "/api/review" && request.method === "POST") {
@@ -6635,6 +6742,38 @@ async function handleMiniApi(env, db, request) {
         return maJson({ ok: true });
       }
 
+      if (path === "/api/admin/orders") {
+        // История заказов для админа (те же заказы и фильтры, что в боте: «📦 Заказы»).
+        const filter = ADMIN_ORDER_FILTERS[clean(body.filter)] ? clean(body.filter) : "all";
+        const per = 15;
+        const all = await loadAllOrders(db);
+        const allowed = ADMIN_ORDER_FILTERS[filter].statuses;
+        const list = allowed ? all.filter((o) => allowed.includes(o.status)) : all;
+        const pages = Math.max(1, Math.ceil(list.length / per));
+        const page = Math.min(Math.max(0, parseInt(body.page, 10) || 0), pages - 1);
+        const ST = { pending_payment: "Ожидает оплаты", paid: "Оплачен", processing: "В обработке", completed: "Выполнен", failed: "Не выполнен", refunded: "Возврат", cancelled: "Отменён" };
+        const out = await Promise.all(
+          list.slice(page * per, (page + 1) * per).map(async (o) => {
+            const usr = o.guest ? null : await getJSON(db, kvKeyUser(o.userId));
+            const cat = CATALOG[o.category];
+            return {
+              no: o.orderNumber,
+              date: fmtDateRu(o.createdAt),
+              who: o.guest ? "Гость (без Telegram)" : usr && usr.username ? `@${usr.username} (${o.userId})` : String(o.userId),
+              item: `${cat ? cat.name : o.category}: ${o.itemName}`,
+              uid: Object.entries(o.uidData || {}).map(([k, v]) => `${k}: ${v}`).join("  "),
+              p: fmtSom(o.total),
+              promo: o.promoCode || "",
+              s: o.status,
+              st: ST[o.status] || String(o.status),
+              contact: o.contact || "",
+              src: o.guest ? "веб" : o.source === "miniapp" ? "мини-апп" : "бот",
+            };
+          })
+        );
+        return maJson({ total: list.length, all: all.length, page, pages, orders: out });
+      }
+
       if (path === "/api/admin/price") {
         const [ck, iid] = clean(body.key).split(":");
         const price = Number(body.price);
@@ -6673,7 +6812,7 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/")) {
-      return handleMiniApi(env, db, request);
+      return handleMiniApi(env, db, request, ctx);
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
