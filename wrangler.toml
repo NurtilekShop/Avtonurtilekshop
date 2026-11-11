@@ -8,7 +8,7 @@ ADMIN_ID = "8842948200"
 ADMIN_USERNAME = "nurt1lek_ff"
 FINIK_ACCOUNT_ID = "7186a748-66b1-454e-b64c-f4eb4ef1504e"
 FINIK_ENV = "prod"
-APP_BASE_URL = "https://nurtilek-shop.muhtarbekovnurtilek.workers.dev"
+APP_BASE_URL = "https://nurtilek-shop.nurtilekshop.workers.dev"
 REVIEWS_CHAT_ID = "-1003806802782"
 
 [observability.logs]
