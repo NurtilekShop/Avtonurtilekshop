@@ -6351,6 +6351,7 @@ async function maServeImg(db, url) {
   if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(k)) return new Response("bad", { status: 400, headers: MA_CORS });
   const b64 = await db.get(`miniimg:${k}`);
   if (!b64) return new Response("not found", { status: 404, headers: MA_CORS });
+  if (b64.startsWith("URL:")) return new Response(null, { status: 302, headers: { Location: b64.slice(4), "Cache-Control": "public, max-age=3600", ...MA_CORS } });
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   return new Response(bin, {
     headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", ...MA_CORS },
@@ -6607,6 +6608,17 @@ async function handleMiniApi(env, db, request) {
         const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ""));
         if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(key) || !m || m[1].length > 400000) return maJson({ error: "bad_input" }, 400);
         await db.put(`miniimg:${key}`, m[1]);
+        const idx = (await getJSON(db, MA_IMG_IDX, {})) || {};
+        idx[key] = Date.now().toString(36);
+        await putJSON(db, MA_IMG_IDX, idx);
+        return maJson({ ok: true, v: idx[key] });
+      }
+
+      if (path === "/api/admin/imgurl") {
+        const key = clean(body.key);
+        const u = String(body.url || "").trim();
+        if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(key) || !/^https:\/\/[^\s"'<>\\]{4,480}$/i.test(u)) return maJson({ error: "bad_input" }, 400);
+        await db.put(`miniimg:${key}`, "URL:" + u);
         const idx = (await getJSON(db, MA_IMG_IDX, {})) || {};
         idx[key] = Date.now().toString(36);
         await putJSON(db, MA_IMG_IDX, idx);
