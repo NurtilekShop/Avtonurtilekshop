@@ -2969,8 +2969,7 @@ async function processDonixOrderInner(env, db, order, lang, chatId, isRetry) {
         break outer;
       }
     }
-    order.status = "processing";
-    await saveOrder(db, order);
+    await saveOrderProcessing(db, order);
     return;
   }
 
@@ -3003,8 +3002,68 @@ async function processDonixOrderInner(env, db, order, lang, chatId, isRetry) {
   if (!result.ok || !result.data) return failOrder(donixErrText(result));
 
   order.donixOrderId = result.data.order_id || result.data.id || null;
+  await saveOrderProcessing(db, order);
+}
+
+/* Сохраняет статус «в обработке» после отправки поставщику, НЕ затирая финальный статус.
+   Donix часто выполняет заказ за секунды, и вебхук «completed» приходит раньше, чем мы дошли до сохранения:
+   раньше старая копия заказа перезаписывала «выполнен» обратно на «в обработке», и заказ висел вечно. */
+async function saveOrderProcessing(db, order) {
+  const TERMINAL = ["completed", "failed", "refunded"];
+  const fresh = await getOrder(db, order.internalId);
+  if (fresh && TERMINAL.includes(fresh.status)) {
+    let changed = false;
+    if (order.donixOrderId && !fresh.donixOrderId) { fresh.donixOrderId = order.donixOrderId; changed = true; }
+    for (const line of order.items || []) {
+      const fl = (fresh.items || []).find((x) => x.itemId === line.itemId);
+      if (fl && line.donixOrderId && !fl.donixOrderId) { fl.donixOrderId = line.donixOrderId; changed = true; }
+    }
+    if (changed) await saveOrder(db, fresh);
+    order.status = fresh.status;
+    return fresh;
+  }
+  if (fresh && fresh.items && order.items) {
+    // часть позиций вебхук уже мог закрыть — их финальные состояния сохраняем
+    for (const line of order.items) {
+      const fl = fresh.items.find((x) => x.itemId === line.itemId);
+      if (!fl) continue;
+      if (TERMINAL.includes(fl.status)) line.status = fl.status;
+      if (fl.units && line.units) for (const k of Object.keys(line.units)) if (TERMINAL.includes(fl.units[k])) line.units[k] = fl.units[k];
+    }
+  }
   order.status = "processing";
   await saveOrder(db, order);
+  return order;
+}
+
+/* Сверяет один «зависший» заказ с поставщиком и, если он уже выполнен/не выполнен, закрывает его
+   (при этом клиенту уходит чек в чат бота, а запись о покупке — в чат отзывов). */
+async function reconcileOneOrder(env, db, order) {
+  if (orderProvider(order) === "mvp") {
+    if (order.status !== "processing") return 0;
+    const mr = await mvpReconcileOrder(env, db, order);
+    return mr && mr.updated ? 1 : 0;
+  }
+  const ids = [];
+  if (order.items && order.items.length > 0) {
+    for (const line of order.items) {
+      const qty = Math.max(1, line.qty || 1);
+      for (let i = 1; i <= qty; i++) ids.push(qty > 1 ? `${order.internalId}::${line.itemId}#${i}` : `${order.internalId}::${line.itemId}`);
+    }
+  } else {
+    ids.push(order.internalId);
+  }
+  let n = 0;
+  for (const externalId of ids) {
+    const r = await donixOrderByExternal(env, externalId);
+    if (!r.ok || !r.data) continue;
+    const { status } = extractDonixOrderInfo(r.data);
+    if (status === "completed" || status === "failed" || status === "refunded") {
+      await handleDonixStatusUpdate(env, db, externalId, status, true);
+      n++;
+    }
+  }
+  return n;
 }
 
 /* ---- Последовательная отправка позиций корзины в Donix ---- */
@@ -6627,7 +6686,23 @@ async function handleMiniApi(env, db, request, ctx) {
 
     if (path === "/api/orders") {
       const ids = ((await getJSON(db, kvKeyUserOrders(tu.id), [])) || []).slice(0, 30);
-      const list = (await Promise.all(ids.map((id) => getOrder(db, id)))).filter((o) => o && o.status !== "cancelled");
+      let list = (await Promise.all(ids.map((id) => getOrder(db, id)))).filter((o) => o && o.status !== "cancelled");
+      // Заказы, которые долго «в обработке»: сверяем с поставщиком прямо сейчас (не ждём cron/вебхук).
+      const stuck = list
+        .filter((o) => {
+          const open = o.items && o.items.some((l) => !["completed", "failed", "refunded"].includes(l.status));
+          const stale = Date.now() - new Date(o.updatedAt || o.createdAt).getTime() > 15000;
+          return stale && (o.status === "processing" || (o.status === "completed" && open && !o.closedManually));
+        })
+        .slice(0, 3);
+      if (stuck.length) {
+        try {
+          await Promise.all(stuck.map((o) => reconcileOneOrder(env, db, o).catch((e) => console.log("reconcile error", String(e)))));
+          list = (await Promise.all(list.map((o) => getOrder(db, o.internalId)))).filter((o) => o && o.status !== "cancelled");
+        } catch (e) {
+          console.log("miniapp reconcile error", String(e));
+        }
+      }
       return maJson({ orders: list.map(maOrderView) });
     }
 
