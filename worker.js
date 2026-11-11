@@ -9,6 +9,7 @@
  */
 
 import { Signer } from "@mancho.devs/authorizer";
+import APP_HTML from "./app-html.js";
 
 const DONIX_BASE = "https://back.donix.org/api/partner/v1";
 
@@ -1845,6 +1846,7 @@ function twoPerRow(buttons) {
 
 function mainMenuKeyboard(lang) {
   return ikb([
+    ...(APP_URL ? [[{ text: "🛍 Открыть магазин", web_app: { url: APP_URL } }]] : []),
     [btn(t(lang, "btn_games"), "menu:games")],
     [btn(t(lang, "btn_wallet"), "wallet:home"), btn(t(lang, "btn_orders"), "orders:list")],
     [btn(t(lang, "btn_promo"), "promo:enter"), btn(t(lang, "btn_profile"), "profile:home")],
@@ -3561,6 +3563,17 @@ async function handleMessage(env, db, msg) {
       cur += ln + "\n";
     }
     if (cur) await sendMessage(env, chatId, escHtml(cur));
+    return;
+  }
+
+  // Admin: /setapp  (ставит кнопку «Магазин» с мини-аппом рядом с полем ввода)
+  if (/^\/setapp/i.test(text) && isAdmin(env, userId)) {
+    if (!APP_URL) {
+      await sendMessage(env, chatId, "❌ Не задана переменная APP_BASE_URL (адрес воркера).");
+      return;
+    }
+    const r = await tgCall(env, "setChatMenuButton", { menu_button: { type: "web_app", text: "Магазин", web_app: { url: APP_URL } } });
+    await sendMessage(env, chatId, r.ok ? `✅ Кнопка «Магазин» установлена.\n${APP_URL}` : `❌ Не удалось: ${escHtml(JSON.stringify(r))}`);
     return;
   }
 
@@ -6250,12 +6263,406 @@ function routeHealth() {
   });
 }
 
+/* ================= MINI APP (Telegram Web App) =================
+   Мини-апп отдаётся воркером по адресу /app, а его данные — через /api/*.
+   Все запросы с авторизацией проверяются по подписи initData (токен бота),
+   поэтому подделать пользователя или админа нельзя. */
+
+let APP_URL = null;
+let BOT_USERNAME = null;
+const MA_IMG_IDX = "miniapp:imgidx";
+const MA_REVIEWS = "miniapp:reviews";
+const MA_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, X-Init-Data",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+};
+
+function maJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", ...MA_CORS },
+  });
+}
+
+async function getBotUsername(env) {
+  if (BOT_USERNAME) return BOT_USERNAME;
+  const r = await tgCall(env, "getMe", {});
+  if (r.ok && r.result && r.result.username) BOT_USERNAME = r.result.username;
+  return BOT_USERNAME;
+}
+
+async function maHmac(keyBytes, msg) {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg)));
+}
+
+/* Проверка подписи Telegram (initData). Возвращает объект пользователя или null. */
+async function maAuth(env, request) {
+  const initData = request.headers.get("X-Init-Data") || "";
+  if (!initData || !env.BOT_TOKEN) return null;
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return null;
+  params.delete("hash");
+  const check = [...params.entries()].map(([k, v]) => `${k}=${v}`).sort().join("\n");
+  const secret = await maHmac(new TextEncoder().encode("WebAppData"), env.BOT_TOKEN);
+  const calc = [...(await maHmac(secret, check))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const got = hash.toLowerCase();
+  let diff = calc.length ^ got.length;
+  for (let i = 0; i < calc.length; i++) diff |= calc.charCodeAt(i) ^ (got.charCodeAt(i) || 0);
+  if (diff !== 0) return null;
+  const authDate = Number(params.get("auth_date")) || 0;
+  if (Date.now() / 1000 - authDate > 86400) return null;
+  try {
+    const u = JSON.parse(params.get("user") || "null");
+    return u && u.id ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+async function maState(db) {
+  const prices = {};
+  await Promise.all(
+    Object.keys(CATALOG)
+      .filter((k) => k !== "tg_stars" && k !== "mvp_test")
+      .map(async (ck) => {
+        const items = await getResolvedItems(db, ck);
+        for (const i of items) prices[`${ck}:${i.id}`] = i.price;
+      })
+  );
+  const [idx, reviews, starRate] = await Promise.all([
+    getJSON(db, MA_IMG_IDX, {}),
+    getJSON(db, MA_REVIEWS, []),
+    getEffectiveStarsPricePerStar(db),
+  ]);
+  return {
+    prices,
+    img: idx || {},
+    reviews: (reviews || []).map(({ userId, ...r }) => r),
+    starRate,
+  };
+}
+
+async function maServeImg(db, url) {
+  const k = url.searchParams.get("k") || "";
+  if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(k)) return new Response("bad", { status: 400, headers: MA_CORS });
+  const b64 = await db.get(`miniimg:${k}`);
+  if (!b64) return new Response("not found", { status: 404, headers: MA_CORS });
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new Response(bin, {
+    headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", ...MA_CORS },
+  });
+}
+
+function maOrderView(o) {
+  const st =
+    o.status === "completed" ? "ok" : o.status === "failed" || o.status === "refunded" ? "bad" : o.status === "pending_payment" ? "pay" : "wait";
+  const cat = CATALOG[o.category];
+  const d =
+    Object.entries(o.uidData || {})
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("  ") || "—";
+  return { no: o.orderNumber, g: `${cat ? cat.name : o.category}: ${o.itemName}`, d, p: fmtSom(o.total), st, rv: !!o.reviewed };
+}
+
+/* Проверка ID игрока и получение ника (так же, как в боте). */
+async function maValidateNick(env, db, catKey, item, uid) {
+  if (itemProvider(item) === "mvp") {
+    const mv = await mvpValidateForItem(env, db, item, uid);
+    if (mv.state === "down") return { error: "unavailable" };
+    if (mv.state === "invalid") return { error: "bad_id" };
+    return { nick: mv.nick };
+  }
+  const sku = await resolveDonixSku(env, catKey, item.id, item.name);
+  if (!sku) {
+    await notifyAdminDonix(env, `не найден SKU для «${item.name}» (${item.id}). Используйте /setsku ${item.id} SKU`);
+    return { error: "unavailable" };
+  }
+  const v = await donixValidate(env, { sku, uid });
+  const st = v.status;
+  if (!v.ok && (st === 0 || st === 401 || st === 403 || st === 429)) {
+    if (st === 401 || st === 403) await notifyAdminDonix(env, `проверка ID: ${donixErrText(v)}`);
+    return { error: "unavailable" };
+  }
+  const nick = v.ok && v.data && v.data.valid !== false ? v.data.player_name || v.data.nickname || v.data.name || null : null;
+  if (!nick) return { error: "bad_id" };
+  return { nick };
+}
+
+/* Создаёт заказ и платёж Finik. Возвращает { error } или { order, paymentUrl }. */
+async function maCreateOrder(env, db, tu, b) {
+  const userId = tu.id;
+  const user = await getUser(db, userId);
+  const lang = user.lang || "ru";
+  const clean = (s) => String(s == null ? "" : s).trim();
+  const catKey = clean(b.cat);
+  const cat = CATALOG[catKey];
+  if (!cat || catKey === "roblox") return { error: "bad_input" };
+  if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) return { error: "unavailable" };
+  if (catKey === "freefire" && (await isFreefireMaintenance(db))) return { error: "maintenance" };
+  if (catKey === "tg_stars" && STARS_TEMP_DISABLED) return { error: "unavailable" };
+
+  const getUsername = () => {
+    const u = clean(b.username);
+    if (!/^@?[A-Za-z0-9_]{5,32}$/.test(u)) return null;
+    return u.startsWith("@") ? u : "@" + u;
+  };
+
+  let itemId, itemName, price, uidData, lines;
+  let steamAmount = null;
+
+  if (catKey === "tg_stars") {
+    const stars = Number(b.stars);
+    if (!Number.isInteger(stars) || stars < cat.min || stars > cat.max) return { error: "bad_input" };
+    const un = getUsername();
+    if (!un) return { error: "bad_username" };
+    const chk = await checkTelegramUsername(env, un);
+    if (chk.state === "down") return { error: "unavailable" };
+    if (chk.state === "invalid") return { error: "bad_username" };
+    price = round2(stars * (await getEffectiveStarsPricePerStar(db)));
+    itemId = `stars_${stars}`;
+    itemName = `${stars} ⭐ Stars`;
+    uidData = { Username: un, Stars: stars };
+  } else if (catKey === "steam") {
+    const amountStr = String(b.amount == null ? "" : b.amount).replace(",", ".");
+    const amount = /^\d+(\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN;
+    const login = clean(b.login);
+    if (!Number.isFinite(amount) || amount < cat.min || amount > cat.max) return { error: "bad_input" };
+    if (login.length < 2 || login.length > 64 || /\s/.test(login)) return { error: "bad_input" };
+    const stPid = await getMvpProductId(db, cat.items[0]);
+    if (stPid) {
+      const vr = await mvpValidatePlayerRaw(env, stPid, { player_id: login, amount: steamAmountText(amount) });
+      const bad = (vr.ok && vr.data && vr.data.valid === false) || ["invalid_player_id", "player_region_mismatch"].includes(mvpErrCode(vr));
+      if (bad) return { error: "bad_id" };
+    }
+    price = round2(amount * (await steamRate(db)));
+    itemId = "steam_usd";
+    itemName = `Steam $${steamAmountText(amount)}`;
+    uidData = { UID: login, "Сумма": `$${steamAmountText(amount)}` };
+    steamAmount = amount;
+  } else {
+    const item = await findItem(db, catKey, clean(b.item));
+    if (!item) return { error: "bad_input" };
+    itemId = item.id;
+    itemName = item.name;
+    price = item.price;
+    if (cat.inputType === "ml_id") {
+      const uid = clean(b.uid);
+      const sid = clean(b.sid);
+      if (uid.length < 2 || uid.length > 64 || !sid || sid.length > 32) return { error: "bad_input" };
+      uidData = { "Player ID": uid, "Server ID": sid };
+    } else if (cat.inputType === "tg_username") {
+      const un = getUsername();
+      if (!un) return { error: "bad_username" };
+      const chk = await checkTelegramUsername(env, un);
+      if (chk.state === "down") return { error: "unavailable" };
+      if (chk.state === "invalid") return { error: "bad_username" };
+      uidData = { Username: un };
+    } else if (cat.noInput) {
+      uidData = {};
+    } else {
+      const uid = clean(b.uid);
+      if (uid.length < 2 || uid.length > 64) return { error: "bad_input" };
+      if (cat.validateNick) {
+        const v = await maValidateNick(env, db, catKey, item, uid);
+        if (v.error) return { error: v.error };
+        uidData = v.nick ? { UID: uid, "Ник": v.nick } : { UID: uid };
+      } else {
+        uidData = { UID: uid };
+      }
+      if (cat.needsServer) {
+        const key = Object.keys(HSR_SERVERS).find((k) => k === b.server || HSR_SERVERS[k] === b.server);
+        if (!key) return { error: "bad_input" };
+        uidData.Server = key;
+      }
+    }
+    if (!cat.noInput) lines = [{ itemId: item.id, name: item.name, qty: 1, price: item.price, lineTotal: item.price }];
+  }
+
+  // Промокод: из поля мини-аппа или активированный ранее в боте. Steam — без скидок.
+  let discount = 0;
+  let promoCode = null;
+  if (catKey !== "steam") {
+    const given = clean(b.promo).toUpperCase();
+    const code = given || (await db.get(kvKeyActivePromo(userId))) || "";
+    if (code) {
+      const check = await validatePromo(db, code, userId, price, { catKey, lines });
+      const usable =
+        check.ok && check.promo.type !== "gift" && check.promo.type !== "balance" && !(check.promo.type === "prices" && check.discount <= 0);
+      if (usable) {
+        discount = check.discount;
+        promoCode = code;
+      } else if (given) {
+        return { error: "bad_promo" };
+      }
+    }
+  }
+  const total = round2(price - discount);
+  if (!(total > 0)) return { error: "bad_promo" };
+
+  const order = await createOrder(db, { userId, category: catKey, itemId, itemName, price, discount, total, uidData, promoCode, items: lines });
+  order.source = "miniapp";
+  if (steamAmount) order.steamAmount = steamAmount;
+  await saveOrder(db, order);
+
+  let payment;
+  try {
+    const botName = await getBotUsername(env);
+    payment = await createFinikPayment(env, {
+      amount: round2(order.total),
+      paymentId: order.internalId,
+      redirectUrl: botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
+      description: `Nurtilek Shop order ${order.orderNumber}`,
+      lang,
+    });
+  } catch (e) {
+    console.log("miniapp finik error", String(e));
+    payment = { ok: false };
+  }
+  if (!payment.ok || !payment.paymentUrl) {
+    order.status = "cancelled";
+    await saveOrder(db, order);
+    return { error: "pay_error" };
+  }
+  return { order, paymentUrl: payment.paymentUrl };
+}
+
+async function handleMiniApi(env, db, request) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: MA_CORS });
+  try {
+    if (path === "/api/img" && request.method === "GET") return await maServeImg(db, url);
+    if (path === "/api/state" && request.method === "GET") return maJson(await maState(db));
+
+    const tu = await maAuth(env, request);
+    if (!tu) return maJson({ error: "auth" }, 401);
+    const clean = (s) => String(s == null ? "" : s).trim();
+    const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
+
+    if (path === "/api/whoami") return maJson({ admin: isAdmin(env, tu.id) });
+
+    if (path === "/api/me") {
+      const u = await getUser(db, tu.id);
+      if (tu.username && tu.username !== u.username) {
+        u.username = tu.username;
+        await saveUser(db, u);
+      }
+      const bot = await getBotUsername(env);
+      return maJson({
+        name: tu.first_name || tu.username || "Гость",
+        id: String(tu.id),
+        spent: fmtSom(u.spent || 0),
+        earned: fmtSom(u.referralEarnings || 0),
+        refLink: bot ? `https://t.me/${bot}?start=ref_${tu.id}` : "",
+      });
+    }
+
+    if (path === "/api/orders") {
+      const ids = ((await getJSON(db, kvKeyUserOrders(tu.id), [])) || []).slice(0, 30);
+      const list = (await Promise.all(ids.map((id) => getOrder(db, id)))).filter((o) => o && o.status !== "cancelled");
+      return maJson({ orders: list.map(maOrderView) });
+    }
+
+    if (path === "/api/order" && request.method === "POST") {
+      const r = await maCreateOrder(env, db, tu, body);
+      if (r.error) return maJson({ error: r.error }, 400);
+      return maJson({ orderNumber: r.order.orderNumber, paymentUrl: r.paymentUrl, total: r.order.total });
+    }
+
+    if (path === "/api/review" && request.method === "POST") {
+      const o = await getOrderByNumber(db, clean(body.orderNo));
+      if (!o || String(o.userId) !== String(tu.id) || o.status !== "completed") return maJson({ error: "bad_input" }, 400);
+      if (o.reviewed) return maJson({ error: "already" }, 400);
+      const text = clean(body.text).slice(0, 400);
+      const rating = Math.round(Number(body.rating));
+      if (text.length < 3 || !(rating >= 1 && rating <= 5)) return maJson({ error: "bad_input" }, 400);
+      const idStr = String(tu.id);
+      const list = (await getJSON(db, MA_REVIEWS, [])) || [];
+      list.unshift({
+        id: crypto.randomUUID(),
+        userId: tu.id,
+        name: String(tu.first_name || tu.username || "Покупатель").slice(0, 30),
+        mask: `ID ${idStr.slice(0, 4)} • • • ${idStr.slice(-2)}`,
+        sum: fmtSom(o.total),
+        date: fmtDateRu(new Date().toISOString()),
+        text,
+        rating,
+      });
+      if (list.length > 200) list.length = 200;
+      await putJSON(db, MA_REVIEWS, list);
+      o.reviewed = true;
+      await saveOrder(db, o);
+      return maJson({ ok: true });
+    }
+
+    if (path.startsWith("/api/admin/")) {
+      if (!isAdmin(env, tu.id)) return maJson({ error: "forbidden" }, 403);
+
+      if (path === "/api/admin/img") {
+        const key = clean(body.key);
+        const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ""));
+        if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(key) || !m || m[1].length > 400000) return maJson({ error: "bad_input" }, 400);
+        await db.put(`miniimg:${key}`, m[1]);
+        const idx = (await getJSON(db, MA_IMG_IDX, {})) || {};
+        idx[key] = Date.now().toString(36);
+        await putJSON(db, MA_IMG_IDX, idx);
+        return maJson({ ok: true, v: idx[key] });
+      }
+
+      if (path === "/api/admin/imgdel") {
+        const key = clean(body.key);
+        if (!/^[A-Za-z0-9_:.\-]{1,80}$/.test(key)) return maJson({ error: "bad_input" }, 400);
+        await db.delete(`miniimg:${key}`);
+        const idx = (await getJSON(db, MA_IMG_IDX, {})) || {};
+        delete idx[key];
+        await putJSON(db, MA_IMG_IDX, idx);
+        return maJson({ ok: true });
+      }
+
+      if (path === "/api/admin/price") {
+        const [ck, iid] = clean(body.key).split(":");
+        const price = Number(body.price);
+        if (!findItemBase(ck, iid) || !Number.isFinite(price) || price <= 0 || price > 10000000) return maJson({ error: "bad_input" }, 400);
+        await setPriceOverride(db, ck, iid, price);
+        await logEvent(db, "settings", `Мини-апп: цена ${ck}:${iid} = ${price}`);
+        return maJson({ ok: true });
+      }
+
+      if (path === "/api/admin/reviewdel") {
+        const id = clean(body.id);
+        const list = ((await getJSON(db, MA_REVIEWS, [])) || []).filter((r) => r.id !== id);
+        await putJSON(db, MA_REVIEWS, list);
+        return maJson({ ok: true });
+      }
+    }
+
+    return maJson({ error: "not_found" }, 404);
+  } catch (e) {
+    console.log("miniapp api error", path, String(e).slice(0, 200));
+    await logEvent(db, "error", `Мини-апп ${path}: ${String(e).slice(0, 150)}`);
+    return maJson({ error: "server" }, 500);
+  }
+}
+
 /* ================= MAIN FETCH ================= */
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const db = env.DB;
+    APP_URL = env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/+$/, "")}/app` : null;
+
+    if (request.method === "GET" && (url.pathname === "/app" || url.pathname === "/app/")) {
+      return new Response(APP_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
+    }
+
+    if (url.pathname.startsWith("/api/")) {
+      return handleMiniApi(env, db, request);
+    }
 
     if (request.method === "GET" && url.pathname === "/health") {
       return routeHealth();
