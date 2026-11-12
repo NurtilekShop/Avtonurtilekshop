@@ -4309,13 +4309,25 @@ async function loadAllOrders(db) {
   return orders;
 }
 
-async function adminOrdersView(db, page, filter) {
+async function adminOrdersView(db, page, filter, env) {
   const all = await loadAllOrders(db);
   const allowed = ADMIN_ORDER_FILTERS[filter].statuses;
   const orders = allowed ? all.filter((o) => allowed.includes(o.status)) : all;
   const pages = Math.max(1, Math.ceil(orders.length / ADMIN_ORDERS_PER_PAGE));
   const cur = Math.min(page, pages - 1);
-  const slice = orders.slice(cur * ADMIN_ORDERS_PER_PAGE, (cur + 1) * ADMIN_ORDERS_PER_PAGE);
+  let slice = orders.slice(cur * ADMIN_ORDERS_PER_PAGE, (cur + 1) * ADMIN_ORDERS_PER_PAGE);
+  // «В обработке» дольше 15 сек: сверяем с поставщиком и закрываем выполненные (чек клиенту + запись в чат отзывов).
+  if (env) {
+    const stuck = slice.filter((o) => o.status === "processing" && Date.now() - new Date(o.updatedAt || o.createdAt).getTime() > 15000).slice(0, 5);
+    if (stuck.length) {
+      try {
+        await Promise.all(stuck.map((o) => reconcileOneOrder(env, db, o).catch((e) => console.log("admin reconcile error", String(e)))));
+        slice = await Promise.all(slice.map(async (o) => (await getOrder(db, o.internalId)) || o));
+      } catch (e) {
+        console.log("admin reconcile error", String(e));
+      }
+    }
+  }
 
   const lines = [`📦 Заказы — ${ADMIN_ORDER_FILTERS[filter].label}`, `Найдено: ${orders.length} (всего заказов: ${all.length}) • стр. ${cur + 1}/${pages}`];
   if (slice.length === 0) lines.push("", "Заказов нет.");
@@ -5011,7 +5023,7 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
   } else if (a === "orders") {
     const page = Math.max(0, parseInt(b, 10) || 0);
     const filter = ADMIN_ORDER_FILTERS[c] ? c : "all";
-    const view = await adminOrdersView(db, page, filter);
+    const view = await adminOrdersView(db, page, filter, env);
     await editMessage(env, chatId, messageId, view.text, view.keyboard);
   } else if (a === "users") {
     const userKeys = await db.list({ prefix: "user:" });
@@ -6338,6 +6350,7 @@ let APP_URL = null;
 let BOT_USERNAME = null;
 const MA_IMG_IDX = "miniapp:imgidx";
 const MA_REVIEWS = "miniapp:reviews";
+const MA_HIDDEN = "miniapp:hidden"; // id игр, скрытых из магазина мини-аппа
 const MA_CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type, X-Init-Data, X-Guest-Id",
@@ -6399,12 +6412,21 @@ async function maState(db) {
         for (const i of items) prices[`${ck}:${i.id}`] = i.price;
       })
   );
-  const [idx, reviews, starRate] = await Promise.all([
+  let roblox = [];
+  try {
+    if (await isRobloxEnabled(db)) roblox = (await getRobloxAvailable(db)).map((p) => ({ id: p.id, robux: p.robux, price: p.price, stock: p.stock }));
+  } catch (e) {
+    console.log("maState roblox error", String(e));
+  }
+  const [idx, reviews, starRate, hidden] = await Promise.all([
     getJSON(db, MA_IMG_IDX, {}),
     getJSON(db, MA_REVIEWS, []),
     getEffectiveStarsPricePerStar(db),
+    getJSON(db, MA_HIDDEN, []),
   ]);
   return {
+    roblox,
+    hidden: Array.isArray(hidden) ? hidden : [],
     prices,
     img: idx || {},
     reviews: (reviews || []).map(({ userId, ...r }) => r),
@@ -6432,7 +6454,8 @@ function maOrderView(o) {
     Object.entries(o.uidData || {})
       .map(([k, v]) => `${k}: ${v}`)
       .join("  ") || "—";
-  return { no: o.orderNumber, g: `${cat ? cat.name : o.category}: ${o.itemName}`, d, p: fmtSom(o.total), st, rv: !!o.reviewed };
+  const rc = o.category === "roblox" && o.status === "completed" && o.robloxCodes && o.robloxCodes[0] ? String(o.robloxCodes[0]) : undefined;
+  return { no: o.orderNumber, g: o.category === "roblox" ? o.itemName : `${cat ? cat.name : o.category}: ${o.itemName}`, d, p: fmtSom(o.total), st, rv: !!o.reviewed, rc };
 }
 
 /* Проверка ID игрока и получение ника (так же, как в боте). */
@@ -6467,14 +6490,15 @@ async function maCreateOrder(env, db, tu, b, ctx) {
   const clean = (s) => String(s == null ? "" : s).trim();
   const catKey = clean(b.cat);
   const cat = CATALOG[catKey];
-  if (!cat || catKey === "roblox") return { error: "bad_input" };
+  const isRbx = catKey === "roblox";
+  if (!cat && !isRbx) return { error: "bad_input" };
   if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) return { error: "unavailable" };
   if (catKey === "freefire" && (await isFreefireMaintenance(db))) return { error: "maintenance" };
   if (catKey === "tg_stars" && STARS_TEMP_DISABLED) return { error: "unavailable" };
   // Гость: нужен WhatsApp для связи; товары с выдачей кода в чат бота и оплата с баланса недоступны.
   let guestContact = null;
   if (tu.guest) {
-    if (cat.noInput) return { error: "guest_unsupported" };
+    if (cat && cat.noInput) return { error: "guest_unsupported" };
     const c = clean(b.contact).replace(/[\s()-]/g, "");
     if (!/^\+?\d{9,15}$/.test(c)) return { error: "bad_contact" };
     guestContact = c.startsWith("+") ? c : "+" + c;
@@ -6519,6 +6543,16 @@ async function maCreateOrder(env, db, tu, b, ctx) {
     itemName = `Steam $${steamAmountText(amount)}`;
     uidData = { UID: login, "Сумма": `$${steamAmountText(amount)}` };
     steamAmount = amount;
+  } else if (isRbx) {
+    // Roblox: цена и коды берутся со склада бота; код выдаётся сразу после оплаты.
+    if (!(await isRobloxEnabled(db))) return { error: "unavailable" };
+    const rp = (await getRobloxProducts(db)).find((p) => p.id === clean(b.item));
+    const rStock = rp ? (await getRobloxCodes(db, rp.id)).length : 0;
+    if (!rp || !(rp.price > 0) || rStock < 1) return { error: "unavailable" };
+    itemId = rp.id;
+    itemName = robloxItemName(rp.robux);
+    price = rp.price;
+    uidData = {};
   } else {
     const item = await findItem(db, catKey, clean(b.item));
     if (!item) return { error: "bad_input" };
@@ -6827,8 +6861,21 @@ async function handleMiniApi(env, db, request, ctx) {
         const pages = Math.max(1, Math.ceil(list.length / per));
         const page = Math.min(Math.max(0, parseInt(body.page, 10) || 0), pages - 1);
         const ST = { pending_payment: "Ожидает оплаты", paid: "Оплачен", processing: "В обработке", completed: "Выполнен", failed: "Не выполнен", refunded: "Возврат", cancelled: "Отменён" };
+        // «В обработке» дольше 15 сек: сверяем с поставщиком прямо сейчас и закрываем, если уже выполнен.
+        let slice = list.slice(page * per, (page + 1) * per);
+        const stuck = slice
+          .filter((o) => o.status === "processing" && Date.now() - new Date(o.updatedAt || o.createdAt).getTime() > 15000)
+          .slice(0, 5);
+        if (stuck.length) {
+          try {
+            await Promise.all(stuck.map((o) => reconcileOneOrder(env, db, o).catch((e) => console.log("admin reconcile error", String(e)))));
+            slice = await Promise.all(slice.map(async (o) => (await getOrder(db, o.internalId)) || o));
+          } catch (e) {
+            console.log("admin reconcile error", String(e));
+          }
+        }
         const out = await Promise.all(
-          list.slice(page * per, (page + 1) * per).map(async (o) => {
+          slice.map(async (o) => {
             const usr = o.guest ? null : await getJSON(db, kvKeyUser(o.userId));
             const cat = CATALOG[o.category];
             return {
@@ -6847,6 +6894,19 @@ async function handleMiniApi(env, db, request, ctx) {
           })
         );
         return maJson({ total: list.length, all: all.length, page, pages, orders: out });
+      }
+
+      if (path === "/api/admin/gamevis") {
+        // Показать / скрыть игру в магазине мини-аппа (скрытые видит только админ).
+        const id = clean(body.id);
+        if (!/^[a-z0-9_-]{1,20}$/i.test(id)) return maJson({ error: "bad_input" }, 400);
+        let list = (await getJSON(db, MA_HIDDEN, [])) || [];
+        if (!Array.isArray(list)) list = [];
+        list = list.filter((x) => x !== id);
+        if (body.hidden) list.push(id);
+        await putJSON(db, MA_HIDDEN, list.slice(0, 100));
+        await logEvent(db, "settings", `Мини-апп: игра ${id} ${body.hidden ? "скрыта" : "показана"}`);
+        return maJson({ ok: true, hidden: list });
       }
 
       if (path === "/api/admin/price") {
