@@ -6425,6 +6425,7 @@ async function maState(db) {
     getJSON(db, MA_HIDDEN, []),
   ]);
   return {
+    nickCats: Object.keys(CATALOG).filter((k) => CATALOG[k] && CATALOG[k].validateNick),
     roblox,
     hidden: Array.isArray(hidden) ? hidden : [],
     prices,
@@ -6744,6 +6745,47 @@ async function handleMiniApi(env, db, request, ctx) {
       const r = await maCreateOrder(env, db, tu, body, ctx);
       if (r.error) return maJson({ error: r.error }, 400);
       return maJson({ orderNumber: r.order.orderNumber, paymentUrl: r.paymentUrl || null, total: r.order.total, paid: !!r.paid, balance: r.balance });
+    }
+
+    if (path === "/api/check-id" && request.method === "POST") {
+      // Проверка игрового ID: возвращает ник игрока (только для игр, где поставщик умеет проверять).
+      const catKey = String(body.cat || "").trim();
+      const cat = CATALOG[catKey];
+      if (!cat || !cat.validateNick) return maJson({ skip: true });
+      const uid = String(body.uid == null ? "" : body.uid).trim();
+      if (uid.length < 2 || uid.length > 64) return maJson({ error: "bad_input" }, 400);
+      const item = await findItem(db, catKey, String(body.item || "").trim());
+      if (!item) return maJson({ error: "bad_input" }, 400);
+      const v = await maValidateNick(env, db, catKey, item, uid);
+      if (v.error) return maJson({ error: v.error }, 400);
+      return maJson({ nick: v.nick || null });
+    }
+
+    if (path === "/api/check-promo" && request.method === "POST") {
+      // Предпросмотр скидки по промокоду (сам заказ пересчитывает скидку заново при создании).
+      const catKey = String(body.cat || "").trim();
+      const code = String(body.promo || "").trim().toUpperCase();
+      if (!code || catKey === "steam") return maJson({ error: "bad_promo" }, 400);
+      let sum = 0;
+      let lines;
+      if (catKey === "roblox") {
+        const rp = (await getRobloxProducts(db)).find((p) => p.id === String(body.item || ""));
+        sum = rp && rp.price > 0 ? rp.price : 0;
+      } else if (catKey === "tg_stars") {
+        sum = Math.max(0, Number(body.sum) || 0);
+      } else {
+        const item = CATALOG[catKey] ? await findItem(db, catKey, String(body.item || "").trim()) : null;
+        if (item) {
+          sum = item.price;
+          lines = [{ itemId: item.id, name: item.name, qty: 1, price: item.price, lineTotal: item.price }];
+        }
+      }
+      if (!(sum > 0)) return maJson({ error: "bad_input" }, 400);
+      const check = await validatePromo(db, code, tu.id, sum, { catKey, lines });
+      if (!check.ok) return maJson({ error: check.reason || "bad_promo" }, 400);
+      const usable = check.promo.type !== "gift" && check.promo.type !== "balance" && !(check.promo.type === "prices" && check.discount <= 0);
+      if (!usable || !(check.discount > 0)) return maJson({ error: "bad_promo" }, 400);
+      return maJson({ ok: true, discount: check.discount, total: round2(sum - check.discount) });
     }
 
     if (path === "/api/topup" && request.method === "POST") {
