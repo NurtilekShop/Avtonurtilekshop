@@ -445,42 +445,71 @@ const CATALOG = {
       { id: "ff_lvl30", name: "🎫 Пропуск прокачки 30 lvl", price: 120, provider: "mvp", providerProductId: "ff.cis.lvl.30", fixed: true, popup: "💎 В игре: 350", warn: true },
     ],
   },
+  // PUBG Mobile — поставщик MVP (раньше был Donix). Цены: у товаров, что уже были в магазине, прежние;
+  // у новых цена = себестоимость MVP / 0.93 (при скидке 7% выходим в ноль), округлено вверх.
   pubg_uc: {
     validateNick: true,
     name: "PUBG Mobile — UC",
     inputType: "pubg_id",
-    donixCategory: "pubg",
     items: [
-      { id: "uc_60", name: "60 UC", price: 89 },
-      { id: "uc_325", name: "325 UC", price: 439 },
-      { id: "uc_660", name: "660 UC", price: 889 },
-      { id: "uc_1800", name: "1800 UC", price: 2200 },
-      { id: "uc_3850", name: "3850 UC", price: 4300 },
-      { id: "uc_8100", name: "8100 UC", price: 8500 },
+      { id: "uc_60", name: "60 UC", price: 89, provider: "mvp", providerProductId: "pubg.global.60_uc", fixed: true },
+      { id: "uc_325", name: "300+25 UC", price: 439, provider: "mvp", providerProductId: "pubg.global.300_25_uc", fixed: true },
+      { id: "uc_660", name: "600+60 UC", price: 889, provider: "mvp", providerProductId: "pubg.global.600_60_uc", fixed: true },
+      { id: "uc_1800", name: "1500+300 UC", price: 2200, provider: "mvp", providerProductId: "pubg.global.1500_300_uc", fixed: true },
+      { id: "uc_3850", name: "3000+850 UC", price: 4300, provider: "mvp", providerProductId: "pubg.global.3000_850_uc", fixed: true },
+      { id: "uc_8100", name: "6000+2100 UC", price: 8500, provider: "mvp", providerProductId: "pubg.global.6000_2100_uc", fixed: true },
     ],
   },
   pubg_prime: {
     validateNick: true,
     name: "PUBG Mobile — Prime",
     inputType: "pubg_id",
-    donixCategory: "pubg",
     items: [
-      { id: "prime_1m", name: "Prime 1 месяц", price: 89 },
-      { id: "prime_3m", name: "Prime 3 месяца", price: 270 },
-      { id: "prime_6m", name: "Prime 6 месяцев", price: 550 },
-      { id: "prime_12m", name: "Prime 12 месяцев", price: 1090 },
+      { id: "prime_1m", name: "Prime 1 месяц", price: 89, provider: "mvp", providerProductId: "pubg.global.prime_1_mesyats", fixed: true },
+      { id: "prime_3m", name: "Prime 3 месяца", price: 270, provider: "mvp", providerProductId: "pubg.global.prime_3_mesyatsa", fixed: true },
+      { id: "prime_6m", name: "Prime 6 месяцев", price: 550, provider: "mvp", providerProductId: "pubg.global.prime_6_mesyatsev", fixed: true },
+      { id: "prime_12m", name: "Prime 12 месяцев", price: 1090, provider: "mvp", providerProductId: "pubg.global.prime_12_mesyatsev", fixed: true },
     ],
   },
   pubg_primeplus: {
     validateNick: true,
     name: "PUBG Mobile — Prime+",
     inputType: "pubg_id",
-    donixCategory: "pubg",
     items: [
-      { id: "primeplus_1m", name: "Prime+ 1 месяц", price: 899 },
-      { id: "primeplus_3m", name: "Prime+ 3 месяца", price: 2600 },
-      { id: "primeplus_6m", name: "Prime+ 6 месяцев", price: 5150 },
-      { id: "primeplus_12m", name: "Prime+ 12 месяцев", price: 10500 },
+      { id: "primeplus_1m", name: "Prime Plus 1 месяц", price: 899, provider: "mvp", providerProductId: "pubg.global.prime_plus_1_mesyats", fixed: true },
+      { id: "primeplus_3m", name: "Prime Plus 3 месяца", price: 2600, provider: "mvp", providerProductId: "pubg.global.prime_plus_3_mesyatsa", fixed: true },
+      { id: "primeplus_6m", name: "Prime Plus 6 месяцев", price: 5150, provider: "mvp", providerProductId: "pubg.global.prime_plus_6_mesyatsev", fixed: true },
+      { id: "primeplus_12m", name: "Prime Plus 12 месяцев", price: 10500, provider: "mvp", providerProductId: "pubg.global.prime_plus_12_mesyatsev", fixed: true },
+    ],
+  },
+  pubg_pass: {
+    validateNick: true,
+    name: "PUBG Mobile — Элитный пропуск",
+    inputType: "pubg_id",
+    items: [
+      { id: "pass_100", name: "Элитный пропуск 1-100 LVL", price: 1079, provider: "mvp", providerProductId: "pubg.global.elitnyy_propusk_1_100_lvl", fixed: true },
+      { id: "pass_plus_100", name: "Элитный пропуск Plus 1-100 LVL", price: 2587, provider: "mvp", providerProductId: "pubg.global.elitnyy_propusk_plus_1_100_lvl", fixed: true },
+      { id: "pass_50", name: "Элитный пропуск 1-50 LVL", price: 535, provider: "mvp", providerProductId: "pubg.global.elitnyy_propusk_1_50_lvl", fixed: true },
+    ],
+  },
+  pubg_packs: {
+    validateNick: true,
+    name: "PUBG Mobile — Наборы",
+    inputType: "pubg_id",
+    items: [
+      { id: "pack_first", name: "First Purchase Pack", price: 90, provider: "mvp", providerProductId: "pubg.global.first_purchase_pack", fixed: true },
+      { id: "pack_mythic", name: "Mythic Emblem Pack", price: 440, provider: "mvp", providerProductId: "pubg.global.mythic_emblem_pack", fixed: true },
+      { id: "pack_firearm", name: "Upgradable Firearm Materials Pack", price: 264, provider: "mvp", providerProductId: "pubg.global.upgradable_firearm_materials_pack", fixed: true },
+    ],
+  },
+  pubg_weekly: {
+    validateNick: true,
+    name: "PUBG Mobile — Еженедельно",
+    inputType: "pubg_id",
+    items: [
+      { id: "weekly_1", name: "Weekly Deal Pack 1", price: 89, provider: "mvp", providerProductId: "pubg.global.weekly_deal_pack_1", fixed: true },
+      { id: "weekly_2", name: "Weekly Deal Pack 2", price: 264, provider: "mvp", providerProductId: "pubg.global.weekly_deal_pack_2", fixed: true },
+      { id: "weekly_mythic", name: "Weekly Mythic Emblem Value Pack", price: 264, provider: "mvp", providerProductId: "pubg.global.weekly_mythic_emblem_value_pack", fixed: true },
     ],
   },
   mlbb: {
@@ -1386,6 +1415,7 @@ async function createOrder(db, params) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  order.provider = catalogOrderProvider(order); // фиксируем поставщика на момент создания заказа
   await putJSON(db, kvKeyOrder(internalId), order);
   await putJSON(db, kvKeyOrderByNumber(orderNumber), internalId);
   const userOrders = (await getJSON(db, kvKeyUserOrders(params.userId), [])) || [];
@@ -1893,7 +1923,8 @@ async function gamesMenuKeyboard(db, lang) {
 function pubgMenuKeyboard(lang) {
   return ikb([
     [btn("UC", "cat:pubg_uc"), btn("Prime", "cat:pubg_prime")],
-    [btn("Prime+", "cat:pubg_primeplus")],
+    [btn("Prime+", "cat:pubg_primeplus"), btn("Пропуска", "cat:pubg_pass")],
+    [btn("Наборы", "cat:pubg_packs"), btn("Еженедельно", "cat:pubg_weekly")],
     [btn(t(lang, "btn_back"), "menu:games")],
   ]);
 }
@@ -2251,6 +2282,24 @@ async function handleCallbackQuery(env, db, cq) {
   const [ns, a, b, c] = data.split(":");
 
   try {
+    if (ns === "weblogin") {
+      const token = String(b || "");
+      const gid = /^[0-9a-f]{24}$/.test(token) ? await db.get(`wl:${token}`) : null;
+      if (!gid) {
+        await editMessage(env, chatId, messageId, "⌛ Ссылка для входа устарела. Нажмите «Войти через Telegram» на сайте ещё раз.");
+        return answerCallback(env, cq.id);
+      }
+      await db.delete(`wl:${token}`);
+      if (a === "ok") {
+        const name = String(cq.from.first_name || cq.from.username || "Покупатель").slice(0, 30);
+        await db.put(`weblink:${gid}`, JSON.stringify({ id: String(userId), name }), { expirationTtl: 90 * 24 * 60 * 60 });
+        await logEvent(db, "settings", `вход на сайт через бота: пользователь ${userId}`);
+        await editMessage(env, chatId, messageId, "✅ Готово! Вы вошли на сайт. Вернитесь на страницу магазина: баланс и заказы теперь в вашем аккаунте.");
+        return answerCallback(env, cq.id, "Вы вошли на сайт");
+      }
+      await editMessage(env, chatId, messageId, "Вход на сайт отменён.");
+      return answerCallback(env, cq.id);
+    }
     if (ns === "menu") {
       if (a === "home") {
         await clearState(db, userId);
@@ -2465,7 +2514,7 @@ async function handleCallbackQuery(env, db, cq) {
           return;
         }
       } else if (mvpInCart) {
-        await answerCallback(env, cq.id, "🎫 Пропуск прокачки покупается отдельным заказом. Нажмите «Сброс», чтобы выбрать другой товар.", true);
+        await answerCallback(env, cq.id, "🎫 Этот товар покупается отдельным заказом. Нажмите «Сброс», чтобы выбрать другой товар.", true);
         return;
       }
       cart.items[itemId] = cur + 1;
@@ -2870,6 +2919,21 @@ async function processDonixOrder(env, db, order, lang, chatId, isRetry = false) 
     }
     return;
   }
+  // Старый PUBG-заказ (до перехода на MVP), не ушедший в Donix: никому не отправляем, только предупреждаем админа.
+  if (orderProvider(order) === "legacy") {
+    if (await idempotentOnce(db, "legacypubg", order.internalId)) {
+      const msg = `заказ №${order.orderNumber} (PUBG) создан до перехода на MVP и не выдан. Автоматически он не уходит ни в MVP, ни в Donix: выдайте вручную или верните деньги клиенту.`;
+      await logEvent(db, "error", msg);
+      if (env.ADMIN_ID) {
+        try {
+          await sendMessage(env, env.ADMIN_ID, `⚠️ ${escHtml(msg)}`.slice(0, 3900));
+        } catch (e) {
+          console.log("legacy pubg notify error", String(e));
+        }
+      }
+    }
+    return;
+  }
   // MVP Resellers: выдача у второго поставщика (поле provider у товара).
   if (orderProvider(order) === "mvp") {
     return processMvpOrder(env, db, order, lang, chatId, isRetry);
@@ -3039,6 +3103,7 @@ async function saveOrderProcessing(db, order) {
 /* Сверяет один «зависший» заказ с поставщиком и, если он уже выполнен/не выполнен, закрывает его
    (при этом клиенту уходит чек в чат бота, а запись о покупке — в чат отзывов). */
 async function reconcileOneOrder(env, db, order) {
+  if (orderProvider(order) === "legacy") return 0;
   if (orderProvider(order) === "mvp") {
     if (order.status !== "processing") return 0;
     const mr = await mvpReconcileOrder(env, db, order);
@@ -3793,6 +3858,25 @@ async function handleMessage(env, db, msg) {
 
   if (text.startsWith("/start")) {
     await clearState(db, userId);
+    {
+      // Вход на сайт: ссылка вида t.me/бот?start=wl_<токен> (токен создаёт сайт, живёт 10 минут).
+      const wlPayload = text.slice(6).trim();
+      if (wlPayload.startsWith("wl_")) {
+        const token = wlPayload.slice(3);
+        const gid = /^[0-9a-f]{24}$/.test(token) ? await db.get(`wl:${token}`) : null;
+        if (!gid) {
+          await sendMessage(env, chatId, "⌛ Ссылка для входа устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.");
+        } else {
+          await sendMessage(
+            env,
+            chatId,
+            "🌐 <b>Вход на сайт Nurtilek Shop</b>\n\nПодтвердите, что это вы заходите на сайт. Если вы ничего не открывали сами — нажмите «Отмена».",
+            ikb([[btn("✅ Войти на сайт", `weblogin:ok:${token}`)], [btn("Отмена", `weblogin:no:${token}`)]])
+          );
+        }
+        return;
+      }
+    }
     if (isNewUser) {
       const payload = text.slice(6).trim();
       if (payload.startsWith("ref_")) {
@@ -4199,6 +4283,9 @@ const CATALOG_LABELS = {
   pubg_uc: "PUBG — UC",
   pubg_prime: "PUBG — Prime",
   pubg_primeplus: "PUBG — Prime+",
+  pubg_pass: "PUBG — Элитный пропуск",
+  pubg_packs: "PUBG — Наборы",
+  pubg_weekly: "PUBG — Еженедельно",
   mlbb: "Mobile Legends",
   codm: "Call of Duty Mobile",
   genshin: "Genshin Impact",
@@ -5625,9 +5712,21 @@ function itemProvider(item) {
   return item && item.provider === "mvp" ? "mvp" : "donix";
 }
 
-/* Поставщик заказа: берём из самого заказа, а если там нет — из каталога по первому товару. */
+/* Поставщик заказа: берём из самого заказа (createOrder записывает его при создании).
+   Старые PUBG-заказы (созданы до перехода на MVP, поля provider нет) и ещё не ушедшие в Donix получают
+   "legacy": ни MVP, ни Donix их автоматически не выполняют — админ получает уведомление и решает вручную.
+   Уже отправленные в Donix старые заказы остаются «donix» и спокойно доезжают через вебхук Donix. */
 function orderProvider(order) {
   if (order && order.provider) return order.provider === "mvp" ? "mvp" : "donix";
+  if (order && String(order.category || "").startsWith("pubg_")) {
+    const sentToDonix = order.donixOrderId || (order.items || []).some((l) => l && l.donixOrderId);
+    return sentToDonix ? "donix" : "legacy";
+  }
+  return catalogOrderProvider(order);
+}
+
+/* Поставщик по каталогу (для новых заказов записывается в order.provider). */
+function catalogOrderProvider(order) {
   const firstId = order && order.items && order.items[0] ? order.items[0].itemId : order && order.itemId;
   const cat0 = order && CATALOG[order.category];
   return itemProvider(findItemBase(order && order.category, firstId) || (cat0 && cat0.steam ? cat0.items[0] : null));
@@ -6180,6 +6279,7 @@ async function syncProcessingOrders(env, db) {
     if (report.checked >= 40) break;
     const order = await getJSON(db, k.name);
     if (!order) continue;
+    if (orderProvider(order) === "legacy") continue;
     if (orderProvider(order) === "mvp") {
       // Заказы MVP сверяем с MVP (GET /orders/{number}), Donix про них ничего не знает.
       if (order.status !== "processing") continue;
@@ -6662,7 +6762,7 @@ async function maCreateOrder(env, db, tu, b, ctx) {
     payment = await createFinikPayment(env, {
       amount: round2(order.total),
       paymentId: order.internalId,
-      redirectUrl: tu.guest && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app#orders` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
+      redirectUrl: (tu.guest || tu.web) && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app#orders` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
       description: `Nurtilek Shop order ${order.orderNumber}`,
       lang,
     });
@@ -6692,14 +6792,47 @@ async function handleMiniApi(env, db, request, ctx) {
       const gid = request.headers.get("X-Guest-Id") || "";
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(gid)) {
         tu = { id: "g_" + gid.toLowerCase(), first_name: "Гость", guest: true };
+        // Браузер уже вошёл через Telegram-бота: работаем как этот пользователь (кроме админ-функций).
+        const linkRaw = await db.get(`weblink:${gid.toLowerCase()}`);
+        if (linkRaw) {
+          try {
+            const link = JSON.parse(linkRaw);
+            if (link && link.id) {
+              const lu = await getUser(db, link.id);
+              tu = { id: String(link.id), first_name: link.name || lu.username || "Покупатель", username: lu.username || undefined, web: true };
+            }
+          } catch (e) {
+            console.log("weblink parse error", String(e));
+          }
+        }
       }
     }
     if (!tu) return maJson({ error: "auth" }, 401);
     if (tu.guest && (path === "/api/topup" || path === "/api/review" || path.startsWith("/api/admin/"))) return maJson({ error: "auth" }, 403);
+    if (tu.web && path.startsWith("/api/admin/")) return maJson({ error: "auth" }, 403); // админка только из Telegram
     const clean = (s) => String(s == null ? "" : s).trim();
     const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
 
-    if (path === "/api/whoami") return maJson({ admin: isAdmin(env, tu.id) });
+    if (path === "/api/whoami") return maJson({ admin: !tu.web && isAdmin(env, tu.id) });
+
+    // Вход на сайте через Telegram-бота (только для браузера без Telegram).
+    if (path === "/api/weblogin/start" && request.method === "POST") {
+      if (!tu.guest) return maJson({ linked: true });
+      const bot = await getBotUsername(env);
+      if (!bot) return maJson({ error: "unavailable" }, 503);
+      const bytes = crypto.getRandomValues(new Uint8Array(12));
+      const token = [...bytes].map((x) => x.toString(16).padStart(2, "0")).join("");
+      await db.put(`wl:${token}`, String(tu.id).slice(2), { expirationTtl: 600 });
+      return maJson({ url: `https://t.me/${bot}?start=wl_${token}` });
+    }
+    if (path === "/api/weblogin/status") return maJson({ linked: !!tu.web });
+    if (path === "/api/weblogin/logout" && request.method === "POST") {
+      if (tu.web) {
+        const g = (request.headers.get("X-Guest-Id") || "").toLowerCase();
+        if (g) await db.delete(`weblink:${g}`);
+      }
+      return maJson({ ok: true });
+    }
 
     if (path === "/api/me") {
       const u = await getUser(db, tu.id);
@@ -6716,6 +6849,7 @@ async function handleMiniApi(env, db, request, ctx) {
         earned: fmtSom(u.referralEarnings || 0),
         refLink: bot && !tu.guest ? `https://t.me/${bot}?start=ref_${tu.id}` : "",
         guest: !!tu.guest,
+        web: !!tu.web,
       });
     }
 
@@ -6810,7 +6944,7 @@ async function handleMiniApi(env, db, request, ctx) {
         payment = await createFinikPayment(env, {
           amount,
           paymentId: topupId,
-          redirectUrl: botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
+          redirectUrl: tu.web && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
           description: `Nurtilek Shop top-up ${topupId}`,
           lang,
         });
