@@ -4485,6 +4485,22 @@ async function loadAllUsers(db) {
   return users;
 }
 
+/* Счётчики пользователей: Telegram (user:<число>) и гости с сайта (user:g_...). Идёт по всем страницам KV. */
+async function countUsersSplit(db) {
+  let tg = 0;
+  let guests = 0;
+  let cursor;
+  do {
+    const res = await db.list({ prefix: "user:", cursor });
+    for (const k of res.keys) {
+      if (k.name.startsWith("user:g_")) guests++;
+      else tg++;
+    }
+    cursor = res.list_complete ? undefined : res.cursor;
+  } while (cursor);
+  return { tg, guests, all: tg + guests };
+}
+
 async function adminWalletsView(db, page) {
   const users = await loadAllUsers(db);
   users.sort((x, y) => (y.balance || 0) - (x.balance || 0));
@@ -4627,7 +4643,7 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
 
   if (a === "stats") {
     const orderKeys = await db.list({ prefix: "order:" });
-    const userKeys = await db.list({ prefix: "user:" });
+    const uc = await countUsersSplit(db);
     let completed = 0;
     let totalRevenue = 0;
     for (const k of orderKeys.keys) {
@@ -4639,7 +4655,8 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
     }
     const text = [
       "📊 Статистика",
-      `Всего пользователей: ${userKeys.keys.length}`,
+      `Пользователей Telegram: ${uc.tg}`,
+      `Гостей с сайта: ${uc.guests}`,
       `Всего заказов: ${orderKeys.keys.length}`,
       `Оплаченных заказов: ${completed}`,
       `Общая сумма оплаченных заказов: ${fmtSom(totalRevenue)} сом`,
@@ -5114,8 +5131,9 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
     await editMessage(env, chatId, messageId, view.text, view.keyboard);
   } else if (a === "users") {
     const userKeys = await db.list({ prefix: "user:" });
-    const recent = userKeys.keys.slice(-15).reverse();
-    const lines = [`👥 Пользователей всего: ${userKeys.keys.length}`, "Последние:"];
+    const uc = await countUsersSplit(db);
+    const recent = userKeys.keys.filter((k) => !k.name.startsWith("user:g_")).slice(-15).reverse();
+    const lines = [`👥 Пользователей Telegram: ${uc.tg}`, `🌐 Гостей с сайта: ${uc.guests}`, "Последние (Telegram):"];
     for (const k of recent) {
       const u = await getJSON(db, k.name);
       if (u) lines.push(`${u.id} @${u.username || "-"} — баланс ${u.balance} сом`);
