@@ -1077,15 +1077,23 @@ function scoreDonixProduct(itemName, p) {
    `sku` field in CATALOG -> automatic match against Donix /products. */
 async function resolveDonixSku(env, catKey, itemId, itemName) {
   const db = env.DB;
-  const override = await db.get(`skuov:${itemId}`);
-  if (override) return override;
   const cat = CATALOG[catKey];
-  if (!cat) return null;
-  const fixed = (cat.items || []).find((i) => i.id === itemId);
-  if (fixed && fixed.sku) return fixed.sku;
+  const override = await db.get(`skuov:${itemId}`);
+  const fixed = cat ? (cat.items || []).find((i) => i.id === itemId) : null;
+  // Кандидаты по приоритету: /setsku -> sku из CATALOG.
+  const candidates = [override, fixed && fixed.sku].filter(Boolean);
+  if (!cat) return override || null;
 
   const products = await getDonixProducts(env);
-  if (!products) return null;
+  if (candidates.length) {
+    // Если Donix отдал список товаров — берём первый кандидат, который там реально есть.
+    // Так устаревший /setsku в KV больше не ломает автозаказ: он просто пропускается.
+    if (!products) return candidates[0];
+    const known = new Set(products.map((p) => String(p.sku)));
+    const live = candidates.find((s) => known.has(String(s)));
+    if (live) return live;
+  }
+  if (!products) return candidates[0] || null;
   const inGame = products.filter((p) => donixProductInGame(p, cat.donixCategory));
 
   if (catKey === "tg_stars") {
@@ -1103,7 +1111,8 @@ async function resolveDonixSku(env, catKey, itemId, itemName) {
       bestScore = sc;
     }
   }
-  return best && bestScore >= 3 ? best.sku : null;
+  if (best && bestScore >= 3) return best.sku;
+  return candidates[0] || null; // в /products нет — пробуем как есть, ошибку покажет Donix
 }
 
 /* ---- Price sync: Donix base price (GET /products) + markup % -> price overrides ---- */
