@@ -1969,8 +1969,8 @@ function mainMenuKeyboard(lang) {
     [btn(t(lang, "btn_promo"), "promo:enter"), btn(t(lang, "btn_profile"), "profile:home")],
     [btn(t(lang, "btn_referral"), "referral:home")],
     [
-      { text: t(lang, "btn_reviews"), url: "https://t.me/nurtilekshop" },
-      { text: t(lang, "btn_channel"), url: "https://t.me/nurtilek_shopp" },
+      { text: t(lang, "btn_reviews"), url: "https://t.me/DonPley_Otzyv" },
+      { text: t(lang, "btn_channel"), url: "https://t.me/DonPley" },
     ],
     [
       { text: t(lang, "btn_support"), url: "https://t.me/nurt1lek_ff" },
@@ -3032,7 +3032,7 @@ async function sendCompletedReceipt(env, userId, lang, order) {
     t(lang, "order_completed_review_hint"),
   ].join("\n");
   await sendMessage(env, userId, receiptText, {
-    inline_keyboard: [[{ text: t(lang, "btn_leave_review"), url: "https://t.me/nurtilekshop" }]],
+    inline_keyboard: [[{ text: t(lang, "btn_leave_review"), url: "https://t.me/DonPley_Otzyv" }]],
   });
   await sendMessage(env, userId, t(lang, "main_menu"), mainMenuKeyboard(lang));
 }
