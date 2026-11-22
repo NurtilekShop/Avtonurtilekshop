@@ -1,5 +1,5 @@
 /**
- * Nurtilek Shop — Telegram bot on Cloudflare Workers
+ * DonPley — Telegram bot on Cloudflare Workers
  * KV binding: DB
  * Vars/secrets: BOT_TOKEN, DONIX_API_KEY, DONIX_WEBHOOK_SECRET, ADMIN_ID,
  *   FINIK_API_KEY, FINIK_PRIVATE_KEY, FINIK_PUBLIC_KEY, FINIK_ACCOUNT_ID,
@@ -38,9 +38,9 @@ async function createFinikPayment(env, { amount, paymentId, redirectUrl, descrip
     RedirectUrl: redirectUrl,
     Data: {
       accountId: env.FINIK_ACCOUNT_ID,
-      name_en: "Nurtilek Shop",
+      name_en: "DonPley",
       webhookUrl: `${env.APP_BASE_URL}/payment-webhook`,
-      description: description || `Nurtilek Shop payment ${paymentId}`,
+      description: description || `DonPley payment ${paymentId}`,
       Lang: lang === "kg" ? "ky" : "ru",
     },
   };
@@ -125,7 +125,7 @@ async function verifyFinikWebhookSignature(env, request, rawBody, url) {
 
 const T = {
   ru: {
-    main_menu: "Главное меню Nurtilek Shop 🛍",
+    main_menu: "Главное меню DonPley 🛍",
     btn_freefire: "🔥 Free Fire",
     btn_pubg: "🔫 PUBG Mobile",
     btn_mlbb: "⚔️ Mobile Legends",
@@ -254,7 +254,7 @@ const T = {
     balance_promo_ok: (a, b) => `🎁 Промокод активирован!\nНа баланс зачислено: +${a} сом\nВаш баланс: ${b} сом`,
   },
   kg: {
-    main_menu: "Nurtilek Shop башкы менюсу 🛍",
+    main_menu: "DonPley башкы менюсу 🛍",
     btn_freefire: "🔥 Free Fire",
     btn_pubg: "🔫 PUBG Mobile",
     btn_mlbb: "⚔️ Mobile Legends",
@@ -678,6 +678,75 @@ const CATALOG = {
     ],
   },
 };
+
+/* ================= РУЧНЫЕ ИГРЫ (только в боте) =================
+   Выдаёт оператор вручную: после оплаты админу приходит заказ с кнопками «Выполнено / Отказать и вернуть деньги».
+   Цены можно менять в админке («Каталог и цены»). В мини-аппе этих игр нет. */
+const mkManual = (prefix, list) => list.map(([n, name, price]) => ({ id: `${prefix}_${n}`, name, price, provider: "manual", fixed: true }));
+const MANUAL_CATS = {
+  m_brawl_pass: {
+    manual: true, name: "Brawl Stars — Пропуски", inputType: "manual", uidLabel: "Аккаунт",
+    prompt: "🎮 Brawl Stars\n\nНапишите ваш <b>игровой тег</b> (например #ABC123) и <b>Supercell ID (почту)</b>.\nОператор может написать вам, чтобы подтвердить вход.",
+    items: mkManual("bsp", [["pass", "🎫 Brawl Pass", 550], ["plus", "🔥 Brawl Pass Plus", 750], ["pro", "👑 Pro Pass", 1479]]),
+  },
+  m_brawl_gems: {
+    manual: true, name: "Brawl Stars — Гемы", inputType: "manual", uidLabel: "Аккаунт",
+    prompt: "🎮 Brawl Stars\n\nНапишите ваш <b>игровой тег</b> (например #ABC123) и <b>Supercell ID (почту)</b>.\nОператор может написать вам, чтобы подтвердить вход.",
+    items: mkManual("bsg", [["30", "🔥 30 гемов", 140], ["80", "💎 80 гемов", 302], ["170", "💎 170 гемов", 550], ["360", "💎 360 гемов", 1050], ["950", "💎 950 гемов", 2550], ["2000", "💎 2000 гемов", 5051]]),
+  },
+  m_standoff: {
+    manual: true, name: "Standoff 2", inputType: "manual", uidLabel: "ID / ник",
+    prompt: "🔫 Standoff 2\n\nНапишите ваш <b>ID в игре</b> и ник.",
+    items: mkManual("so", [["100", "🔥 🪙 100", 153], ["200", "🪙 200", 283], ["300", "🪙 300", 406], ["500", "🔥 🪙 500", 688]]),
+  },
+  m_blackrussia: {
+    manual: true, name: "Black Russia", inputType: "manual", uidLabel: "Ник / сервер",
+    prompt: "🚗 Black Russia\n\nНапишите <b>ник в игре</b> и <b>номер сервера</b>.",
+    items: mkManual("br", [["200", "🔴 200 BC", 173], ["400", "🔴 400 BC", 346], ["600", "🔴 600 BC", 489]]),
+  },
+  m_grand: {
+    manual: true, name: "GRAND Mobile", inputType: "manual", uidLabel: "Ник / сервер",
+    prompt: "🚘 GRAND Mobile\n\nНапишите <b>ник в игре</b> и <b>номер сервера</b>.",
+    items: mkManual("gr", [["75", "🟡 75 GC", 72], ["495", "🟡 495 GC", 401], ["995", "🟡 995 GC", 898], ["2495", "🟡 2 495 GC", 1577], ["4995", "🟡 4 995 GC", 2926], ["9995", "🟡 9 995 GC", 5795], ["19995", "🟡 19 995 GC", 9475], ["49995", "🟡 49 995 GC", 21486]]),
+  },
+  m_matryoshka: {
+    manual: true, name: "Матрёшка RP", inputType: "manual", uidLabel: "Ник / сервер",
+    prompt: "🪆 Матрёшка RP\n\nНапишите <b>ник в игре</b> и <b>номер сервера</b>.",
+    items: mkManual("mt", [["100", "🟡 100 МС", 151], ["241", "🟡 241 МС", 291], ["625", "🟡 625 МС", 664], ["1300", "🟡 1 300 МС", 1298], ["2700", "🟡 2 700 МС", 2534], ["7000", "🟡 7 000 МС", 6034], ["15000", "🟡 15 000 МС", 12259]]),
+  },
+  m_oxide: {
+    manual: true, name: "Oxide Survival Island", inputType: "manual", uidLabel: "ID / ник",
+    prompt: "🏝 Oxide Survival Island\n\nНапишите ваш <b>ID и ник в игре</b>.",
+    items: mkManual("ox", [["elite", "🎫 Боевой пропуск Elite", 820], ["500p", "👑 500 Монет + 14 дней Premium", 1150], ["50", "🪙 50 + 5 Монет", 222], ["125", "🪙 125 + 20 Монет", 505], ["250", "🪙 250 + 65 Монет", 1094], ["500", "🪙 500 + 175 Монет", 2088], ["1250", "🪙 1250 + 500 Монет", 5145], ["2500", "🪙 2500 + 1250 Монет", 11015], ["7500", "🪙 7500 + 3750 Монет", 30155], ["bp25", "💳 25 BP Coins", 545], ["bp75", "💳 75 BP Coins", 1806], ["bp250", "💳 250 BP Coins", 5045]]),
+  },
+  m_tiktok: {
+    manual: true, name: "TikTok", inputType: "manual", uidLabel: "Аккаунт",
+    prompt: "🎵 TikTok\n\nНапишите ваш <b>логин (@username)</b> в TikTok.",
+    items: mkManual("tt", [["80", "🪙 80 Монет", 124], ["400", "🪙 400 Монет", 567], ["800", "🪙 800 Монет", 1134], ["2040", "🪙 2040 Монет", 2735], ["4100", "🪙 4100 Монет", 5369]]),
+  },
+  m_apple: {
+    manual: true, name: "Apple", inputType: "manual", uidLabel: "Связь",
+    prompt: "🍎 Apple\n\nНапишите ваш <b>@username в Telegram</b>, куда оператор отправит код. Если юзернейма нет — напишите «в боте».",
+    items: mkManual("ap", [["2", "$2", 210], ["5", "$5", 505], ["10", "$10", 1005], ["15", "$15", 1500], ["20", "$20", 2000], ["25", "$25", 2500], ["30", "$30", 3000], ["35", "$35", 3700], ["40", "$40", 4000], ["50", "$50", 5000], ["60", "$60", 5968], ["70", "$70", 6964], ["80", "$80", 8107], ["90", "$90", 9304], ["100", "$100", 10004], ["150", "$150", 15000], ["200", "$200", 20000], ["250", "$250", 25000], ["300", "$300", 30000], ["400", "$400", 40000], ["500", "$500", 50000]]),
+  },
+  m_mc_license: {
+    manual: true, name: "Minecraft — Лицензия", inputType: "manual", uidLabel: "Аккаунт",
+    prompt: "⛏ Minecraft (лицензия ПК)\n\nНапишите <b>email Microsoft-аккаунта</b>, на который оформить лицензию.",
+    items: mkManual("mcl", [["java", "🎮 Java & Bedrock Edition (PC)", 2087]]),
+  },
+  m_mc_coins: {
+    manual: true, name: "Minecraft — Minecoins", inputType: "manual", uidLabel: "Аккаунт",
+    prompt: "⛏ Minecraft — Minecoins\n\nНапишите <b>ник в Minecraft</b>, платформу и <b>email Microsoft-аккаунта</b>.",
+    items: mkManual("mcc", [["330", "🟡 330 Minecoins", 425], ["1720", "🟡 1720 Minecoins", 854], ["3500", "🟡 3500 Minecoins", 2084], ["8800", "🟡 8800 Minecoins", 5562]]),
+  },
+  m_ps: {
+    manual: true, name: "PlayStation USA", inputType: "manual", uidLabel: "Связь",
+    prompt: "🎮 PlayStation (USA)\n\nНапишите ваш <b>@username в Telegram</b>, куда оператор отправит код. Если юзернейма нет — напишите «в боте».",
+    items: mkManual("ps", [["1", "$1", 139], ["5", "$5", 529], ["10", "$10", 1000], ["15", "$15", 1500], ["25", "$25", 2500], ["50", "$50", 5000], ["75", "$75", 7500], ["100", "$100", 9879], ["150", "$150", 14319]]),
+  },
+};
+Object.assign(CATALOG, MANUAL_CATS);
+
 
 // У каждого товара есть provider ("donix" по умолчанию или "mvp") и providerProductId (для "mvp").
 for (const cat of Object.values(CATALOG)) {
@@ -1459,6 +1528,15 @@ async function getOrderByNumber(db, orderNumber) {
 }
 async function saveOrder(db, order) {
   order.updatedAt = new Date().toISOString();
+  // Метки времени этапов заказа (для истории в мини-аппе): фиксируем первый момент каждого статуса.
+  {
+    const ts = order.ts || (order.ts = {});
+    const s = order.status;
+    if (s === "paid" && !ts.paid) ts.paid = order.updatedAt;
+    else if (s === "processing") { if (!ts.paid) ts.paid = order.updatedAt; if (!ts.proc) ts.proc = order.updatedAt; }
+    else if (s === "completed") { if (!ts.paid) ts.paid = order.createdAt || order.updatedAt; if (!ts.done) ts.done = order.updatedAt; }
+    else if ((s === "failed" || s === "refunded") && !ts.fail) ts.fail = order.updatedAt;
+  }
   await putJSON(db, kvKeyOrder(order.internalId), order);
 }
 
@@ -1538,7 +1616,7 @@ async function getRobloxAvailable(db) {
 
 async function robloxShopView(db, lang) {
   const items = await getRobloxAvailable(db);
-  const back = btn(t(lang, "btn_back"), "menu:games");
+  const back = btn(t(lang, "btn_back"), "menu:auto");
   if (items.length === 0) {
     return {
       text: rbxT(
@@ -1925,16 +2003,38 @@ async function gamesMenuKeyboard(db, lang) {
   rows.push([btn(t(lang, "btn_discord"), "cat:discord")]);
   rows.push([btn(t(lang, "btn_steam"), "cat:steam")]);
   if (await isMvpTestEnabled(db)) rows.push([btn(t(lang, "btn_mvp_test"), "cat:mvp_test")]);
-  rows.push([btn(t(lang, "btn_home"), "menu:home")]);
+  rows.push([btn(t(lang, "btn_back"), "menu:games"), btn(t(lang, "btn_home"), "menu:home")]);
   return ikb(rows);
 }
+
+/* Первый экран «Игры и сервисы»: выбор раздела. */
+function gamesChooserKeyboard() {
+  return ikb([
+    [btn("🛠 Игры вручную · больше игр и сервисов", "menu:manual")],
+    [btn("⚡ Автоматические · выдача за минуты", "menu:auto")],
+    [btn("🏠 Главное меню", "menu:home")],
+  ]);
+}
+const GAMES_CHOOSER_TEXT = "🎮 <b>Игры и сервисы</b>\n\n🛠 <b>Игры вручную</b> — Brawl Stars, Standoff 2, Black Russia, GRAND, Матрёшка RP, TikTok, Apple, Minecraft, PlayStation и другие. Заказ выдаёт оператор лично.\n\n⚡ <b>Автоматические</b> — Free Fire, PUBG, Mobile Legends и др. Выдача за 1–3 минуты.\n\nВыберите раздел 👇";
+
+function manualMenuKeyboard() {
+  return ikb([
+    [btn("🔥 Brawl Stars", "menu:brawl"), btn("🔫 Standoff 2", "cat:m_standoff")],
+    [btn("🚗 Black Russia", "cat:m_blackrussia"), btn("🚘 GRAND Mobile", "cat:m_grand")],
+    [btn("🪆 Матрёшка RP", "cat:m_matryoshka"), btn("🏝 Oxide Survival", "cat:m_oxide")],
+    [btn("🎵 TikTok", "cat:m_tiktok"), btn("⛏ Minecraft", "menu:mc")],
+    [btn("🍎 Apple", "cat:m_apple"), btn("🎮 PlayStation", "cat:m_ps")],
+    [btn("⬅️ Назад", "menu:games"), btn("🏠 Главное меню", "menu:home")],
+  ]);
+}
+const MANUAL_MENU_TEXT = "🛠 <b>Игры вручную</b>\n\n✅ Оплатили — оператор выдал лично и написал вам\n🔥 Выгодные цены в сомах\n💳 Оплата с баланса или Finik QR / картой\n\nВыберите игру или сервис 👇";
 
 function pubgMenuKeyboard(lang) {
   return ikb([
     [btn("UC", "cat:pubg_uc"), btn("Prime", "cat:pubg_prime")],
     [btn("Prime+", "cat:pubg_primeplus"), btn("Пропуска", "cat:pubg_pass")],
     [btn("Наборы", "cat:pubg_packs"), btn("Еженедельно", "cat:pubg_weekly")],
-    [btn(t(lang, "btn_back"), "menu:games")],
+    [btn(t(lang, "btn_back"), "menu:auto")],
   ]);
 }
 
@@ -1980,7 +2080,7 @@ function serverKeyboard(lang) {
 async function discordShopView(db, lang) {
   const items = await getResolvedItems(db, "discord");
   const rows = items.map((i) => [btn(`${i.name} — ${fmtSom(i.price)} ${t(lang, "kg_som")}`, `dcbuy:${i.id}`)]);
-  rows.push([btn(t(lang, "btn_back"), "menu:games")]);
+  rows.push([btn(t(lang, "btn_back"), "menu:auto")]);
   return { text: lang === "kg" ? "💬 Discord\n\nТоварды тандаңыз. Код төлөмдөн кийин дароо келет:" : "💬 Discord\n\nВыберите товар. Код придёт сразу после оплаты:", keyboard: ikb(rows) };
 }
 function steamAmountText(a) {
@@ -1994,7 +2094,7 @@ function steamQuickKeyboard(lang) {
   const q = CATALOG.steam.quick;
   const rows = [q.slice(0, 3).map((n) => btn(`$${n}`, `steam:${n}`)), q.slice(3, 6).map((n) => btn(`$${n}`, `steam:${n}`))];
   rows.push([btn(t(lang, "steam_custom_btn"), "steam:custom")]);
-  rows.push([btn(t(lang, "btn_back"), "menu:games")]);
+  rows.push([btn(t(lang, "btn_back"), "menu:auto")]);
   return ikb(rows);
 }
 async function createSteamOrder(env, db, lang, chatId, userId, login, amount) {
@@ -2023,12 +2123,15 @@ async function createSteamOrder(env, db, lang, chatId, userId, login, amount) {
 function tgMenuKeyboard(lang) {
   return ikb([
     [btn("⭐ Stars", "cat:tg_stars"), btn("💎 Premium", "cat:tg_premium")],
-    [btn(t(lang, "btn_back"), "menu:games")],
+    [btn(t(lang, "btn_back"), "menu:auto")],
   ]);
 }
 
 function categoryBackTarget(catKey) {
-  return catKey.startsWith("pubg_") ? "menu:pubg" : catKey.startsWith("tg_") ? "menu:tg" : "menu:games";
+  if (catKey.startsWith("m_brawl_")) return "menu:brawl";
+  if (catKey.startsWith("m_mc_")) return "menu:mc";
+  if (catKey.startsWith("m_")) return "menu:manual";
+  return catKey.startsWith("pubg_") ? "menu:pubg" : catKey.startsWith("tg_") ? "menu:tg" : "menu:auto";
 }
 
 /* Cart-style product screen: tapping a product adds one unit of it to the basket
@@ -2036,15 +2139,16 @@ function categoryBackTarget(catKey) {
    appears once at least one item is selected, to proceed to checkout. */
 async function cartKeyboard(db, lang, catKey, cart) {
   const cat = CATALOG[catKey];
-  if (!cat) return ikb([[btn(t(lang, "btn_back"), "menu:games")]]);
+  if (!cat) return ikb([[btn(t(lang, "btn_back"), "menu:auto")]]);
   const resolvedItems = await getResolvedItems(db, catKey);
   const items = cart && cart.catKey === catKey ? cart.items : {};
   const productButtons = resolvedItems.map((i) => {
     const qty = items[i.id] || 0;
-    const label = qty > 0 ? `${i.name} ×${qty}` : i.name;
+    const nm = cat.manual ? `${i.name} · ${fmtSom(i.price)} с` : i.name;
+    const label = qty > 0 ? `${nm} ×${qty}` : nm;
     return btn(label, `cartadd:${catKey}:${i.id}`);
   });
-  const rows = twoPerRow(productButtons);
+  const rows = cat.manual ? productButtons.map((b) => [b]) : twoPerRow(productButtons);
   const backTarget = categoryBackTarget(catKey);
   if (resolvedItems.length > 0) rows.push([btn(t(lang, "btn_prices"), `prices:${catKey}`)]);
   const total = cartTotal(cart && cart.catKey === catKey ? cart : null, resolvedItems);
@@ -2314,13 +2418,32 @@ async function handleCallbackQuery(env, db, cq) {
         await clearState(db, userId);
         await renderMainMenu(env, db, chatId, messageId, lang);
       } else if (a === "games") {
+        await editMessage(env, chatId, messageId, GAMES_CHOOSER_TEXT, gamesChooserKeyboard());
+      } else if (a === "auto") {
         await editMessage(env, chatId, messageId, t(lang, "choose_category"), await gamesMenuKeyboard(db, lang));
+      } else if (a === "manual") {
+        await clearCart(db, userId);
+        await editMessage(env, chatId, messageId, MANUAL_MENU_TEXT, manualMenuKeyboard());
+      } else if (a === "brawl") {
+        await editMessage(env, chatId, messageId, "🔥 <b>Brawl Stars</b>\n\nВыберите, что купить 👇", ikb([
+          [btn("🎫 Пропуски", "cat:m_brawl_pass"), btn("💎 Гемы", "cat:m_brawl_gems")],
+          [btn("⬅️ Назад", "menu:manual")],
+        ]));
+      } else if (a === "mc") {
+        await editMessage(env, chatId, messageId, "⛏ <b>Minecraft</b>\n\nВыберите, что купить 👇", ikb([
+          [btn("🎮 Лицензия ПК", "cat:m_mc_license"), btn("🟡 Minecoins", "cat:m_mc_coins")],
+          [btn("⬅️ Назад", "menu:manual")],
+        ]));
       } else if (a === "pubg") {
         await editMessage(env, chatId, messageId, t(lang, "choose_category"), pubgMenuKeyboard(lang));
       } else if (a === "tg") {
         await editMessage(env, chatId, messageId, t(lang, "choose_category"), tgMenuKeyboard(lang));
       }
       return answerCallback(env, cq.id);
+    }
+
+    if (ns === "mdone" || ns === "mfail") {
+      return handleManualDecision(env, db, cq, ns === "mdone" ? "done" : "fail", a);
     }
 
     if (ns === "stars") {
@@ -2421,7 +2544,7 @@ async function handleCallbackQuery(env, db, cq) {
     if (ns === "cat" && a === "roblox") {
       await clearState(db, userId);
       if (!(await isRobloxEnabled(db))) {
-        await editMessage(env, chatId, messageId, t(lang, "service_unavailable"), ikb([[btn(t(lang, "btn_back"), "menu:games")]]));
+        await editMessage(env, chatId, messageId, t(lang, "service_unavailable"), ikb([[btn(t(lang, "btn_back"), "menu:auto")]]));
         return answerCallback(env, cq.id);
       }
       const view = await robloxShopView(db, lang);
@@ -2462,12 +2585,12 @@ async function handleCallbackQuery(env, db, cq) {
       }
       if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) {
         await clearCart(db, userId);
-        await editMessage(env, chatId, messageId, t(lang, "service_unavailable"), ikb([[btn(t(lang, "btn_back"), "menu:games")]]));
+        await editMessage(env, chatId, messageId, t(lang, "service_unavailable"), ikb([[btn(t(lang, "btn_back"), "menu:auto")]]));
         return answerCallback(env, cq.id);
       }
       if (catKey === "freefire" && (await isFreefireMaintenance(db))) {
         await clearCart(db, userId);
-        await editMessage(env, chatId, messageId, MAINTENANCE_TEXT[lang] || MAINTENANCE_TEXT.ru, ikb([[btn(t(lang, "btn_back"), "menu:games")]]));
+        await editMessage(env, chatId, messageId, MAINTENANCE_TEXT[lang] || MAINTENANCE_TEXT.ru, ikb([[btn(t(lang, "btn_back"), "menu:auto")]]));
         return answerCallback(env, cq.id);
       }
       let cart = await getCart(db, userId);
@@ -2577,7 +2700,10 @@ async function handleCallbackQuery(env, db, cq) {
         inputType: cat.inputType,
         items: lines,
       };
-      if (cat.inputType === "ml_id") {
+      if (cat.manual) {
+        await setState(db, userId, { step: "await_uid", data: stateData });
+        await editMessage(env, chatId, messageId, cat.prompt || "Напишите данные для выдачи заказа:", backHomeKeyboard(lang));
+      } else if (cat.inputType === "ml_id") {
         await setState(db, userId, { step: "await_ml_player", data: stateData });
         await editMessage(env, chatId, messageId, t(lang, "enter_player_id_mlbb"), backHomeKeyboard(lang));
       } else {
@@ -2672,7 +2798,7 @@ async function handleCallbackQuery(env, db, cq) {
           amount: round2(order.total),
           paymentId: order.internalId,
           redirectUrl,
-          description: `Nurtilek Shop order ${order.orderNumber}`,
+          description: `DonPley order ${order.orderNumber}`,
           lang,
         });
         if (!payment.ok) {
@@ -2712,7 +2838,7 @@ async function handleCallbackQuery(env, db, cq) {
           .map(([k, v]) => `${k}: ${v}`)
           .join("\n");
         const messageText = [
-          `Здравствуйте! Хочу оформить заказ Nurtilek Shop.`,
+          `Здравствуйте! Хочу оформить заказ DonPley.`,
           `Заказ: ${order.orderNumber}`,
           `Товар: ${order.itemName}`,
           `Сумма: ${fmtSom(order.total)} ${t(lang, "kg_som")}`,
@@ -2928,6 +3054,16 @@ async function processDonixOrder(env, db, order, lang, chatId, isRetry = false) 
     }
     return;
   }
+  // Ручные игры: заказ уходит оператору (админу) с кнопками «Выполнено / Отказать».
+  if (orderProvider(order) === "manual") {
+    try {
+      await processManualOrder(env, db, order, lang, chatId);
+    } catch (e) {
+      console.log("processManualOrder error", order.orderNumber, String(e));
+      await logEvent(db, "error", `ручной заказ №${order.orderNumber}: ${String(e).slice(0, 200)}`);
+    }
+    return;
+  }
   // Старый PUBG-заказ (до перехода на MVP), не ушедший в Donix: никому не отправляем, только предупреждаем админа.
   if (orderProvider(order) === "legacy") {
     if (await idempotentOnce(db, "legacypubg", order.internalId)) {
@@ -2957,6 +3093,77 @@ async function processDonixOrder(env, db, order, lang, chatId, isRetry = false) 
   }
 }
 
+
+/* ================= РУЧНАЯ ВЫДАЧА ================= */
+
+/* Оплаченный заказ ручной игры: ставим «в обработке», уведомляем клиента и отправляем админу с кнопками. */
+async function processManualOrder(env, db, order, lang, chatId) {
+  if (!(await idempotentOnce(db, "manualnotify", order.internalId))) return;
+  const fresh = (await getOrder(db, order.internalId)) || order;
+  if (fresh.status === "completed" || fresh.status === "failed" || fresh.status === "refunded") return;
+  fresh.status = "processing";
+  if (fresh.items) fresh.items.forEach((l) => { if (l.status === "pending") l.status = "processing"; });
+  await saveOrder(db, fresh);
+  const buyer = await getUser(db, fresh.userId);
+  await sendMessage(
+    env,
+    fresh.userId,
+    `🛠 Заказ №${fresh.orderNumber} оплачен и передан оператору.\nОн выдаст его вручную — вы получите уведомление, как только всё будет готово.`,
+    backHomeKeyboard(lang)
+  );
+  const cat = CATALOG[fresh.category];
+  const data = Object.entries(fresh.uidData || {}).map(([k, v]) => `${escHtml(k)}: <b>${escHtml(v)}</b>`).join("\n");
+  const who = `<a href="tg://user?id=${fresh.userId}">${escHtml(buyer.username ? "@" + buyer.username : String(fresh.userId))}</a> (ID ${fresh.userId})`;
+  const text = [
+    `🛠 <b>РУЧНОЙ ЗАКАЗ №${fresh.orderNumber}</b>`,
+    `🎮 ${escHtml(cat ? cat.name : fresh.category)}`,
+    `📦 ${escHtml(fresh.itemName)}`,
+    `💰 ${fmtSom(fresh.total)} сом (оплачен)`,
+    `👤 ${who}`,
+    data,
+  ].filter(Boolean).join("\n");
+  const kb = ikb([
+    [btn("✅ Выполнено", `mdone:${fresh.internalId}`)],
+    [btn("❌ Отказать и вернуть деньги", `mfail:${fresh.internalId}`)],
+  ]);
+  const ids = String(env.ADMIN_ID || "").split(/[,\s;]+/).map((x) => x.replace(/["']/g, "").trim()).filter(Boolean);
+  for (const id of ids) {
+    try { await sendMessage(env, id, text.slice(0, 3900), kb); } catch (e) { console.log("manual notify error", String(e)); }
+  }
+}
+
+/* Админ нажал «Выполнено» / «Отказать» под ручным заказом. */
+async function handleManualDecision(env, db, cq, kind, internalId) {
+  const userId = cq.from.id;
+  if (!isAdmin(env, userId)) return answerCallback(env, cq.id, "⛔ Только для админа", true);
+  const o = await getOrder(db, internalId);
+  if (!o || orderProvider(o) !== "manual") return answerCallback(env, cq.id, "Заказ не найден", true);
+  if (["completed", "failed", "refunded"].includes(o.status)) return answerCallback(env, cq.id, "Заказ уже обработан", true);
+  if (o.status === "pending_payment" || o.status === "cancelled") return answerCallback(env, cq.id, "Заказ не оплачен", true);
+  const buyer = await getUser(db, o.userId);
+  const blang = buyer.lang || "ru";
+  const chatId = cq.message.chat.id;
+  const messageId = cq.message.message_id;
+  const base = String(cq.message.text || `Заказ №${o.orderNumber}`).slice(0, 3500);
+  if (kind === "done") {
+    o.status = "completed";
+    o.closedManually = true;
+    if (o.items) o.items.forEach((l) => { l.status = "completed"; });
+    await saveOrder(db, o);
+    await sendCompletedReceipt(env, o.userId, blang, o);
+    await editMessage(env, chatId, messageId, `${escHtml(base)}\n\n✅ <b>Выдан</b>`, ikb([]));
+    return answerCallback(env, cq.id, "Готово: клиенту отправлено уведомление");
+  }
+  o.status = "failed";
+  if (o.items) o.items.forEach((l) => { l.status = "failed"; });
+  await saveOrder(db, o);
+  if (await idempotentOnce(db, "refund", o.internalId)) await walletRelease(db, o.userId, o.total, `manual_failed:${o.orderNumber}`);
+  await restoreGiftPromo(db, o);
+  await sendMessage(env, o.userId, t(blang, "failed"), backHomeKeyboard(blang));
+  await editMessage(env, chatId, messageId, `${escHtml(base)}\n\n❌ <b>Отказано, ${fmtSom(o.total)} сом возвращено клиенту на баланс</b>`, ikb([]));
+  return answerCallback(env, cq.id, "Деньги возвращены на баланс клиента");
+}
+
 /* Re-sends orders that were paid but never reached Donix. Before creating anything it asks Donix
    whether that external_id already exists, so nothing is ever ordered twice. */
 async function retryPaidOrder(env, db, order) {
@@ -2964,6 +3171,7 @@ async function retryPaidOrder(env, db, order) {
   const buyer = await getUser(db, order.userId);
   await db.delete(kvKeyIdemp("donixcreate", order.internalId));
   await db.delete(kvKeyIdemp("mvpcreate", order.internalId));
+  await db.delete(kvKeyIdemp("manualnotify", order.internalId));
   await processDonixOrder(env, db, order, buyer.lang || "ru", order.userId, true);
   return true;
 }
@@ -3112,7 +3320,7 @@ async function saveOrderProcessing(db, order) {
 /* Сверяет один «зависший» заказ с поставщиком и, если он уже выполнен/не выполнен, закрывает его
    (при этом клиенту уходит чек в чат бота, а запись о покупке — в чат отзывов). */
 async function reconcileOneOrder(env, db, order) {
-  if (orderProvider(order) === "legacy") return 0;
+  if (orderProvider(order) === "legacy" || orderProvider(order) === "manual") return 0;
   if (orderProvider(order) === "mvp") {
     if (order.status !== "processing") return 0;
     const mr = await mvpReconcileOrder(env, db, order);
@@ -3879,7 +4087,7 @@ async function handleMessage(env, db, msg) {
           await sendMessage(
             env,
             chatId,
-            "🌐 <b>Вход на сайт Nurtilek Shop</b>\n\nПодтвердите, что это вы заходите на сайт. Если вы ничего не открывали сами — нажмите «Отмена».",
+            "🌐 <b>Вход на сайт DonPley</b>\n\nПодтвердите, что это вы заходите на сайт. Если вы ничего не открывали сами — нажмите «Отмена».",
             ikb([[btn("✅ Войти на сайт", `weblogin:ok:${token}`)], [btn("Отмена", `weblogin:no:${token}`)]])
           );
         }
@@ -3989,6 +4197,8 @@ async function handleMessage(env, db, msg) {
           return;
         }
         uidData = { Username: uid.startsWith("@") ? uid : "@" + uid };
+      } else if (cat && cat.manual) {
+        uidData = { [cat.uidLabel || "Данные"]: uid.slice(0, 200) };
       } else {
         uidData = { UID: uid };
       }
@@ -4228,7 +4438,7 @@ async function handleMessage(env, db, msg) {
       amount,
       paymentId: topupId,
       redirectUrl,
-      description: `Nurtilek Shop top-up ${topupId}`,
+      description: `DonPley top-up ${topupId}`,
       lang,
     });
 
@@ -4307,6 +4517,18 @@ const CATALOG_LABELS = {
   discord: "Discord",
   steam: "Steam (курс за $1)",
   mvp_test: "MVP тест (2-й поставщик)",
+  m_brawl_pass: "🛠 Brawl Stars — Пропуски",
+  m_brawl_gems: "🛠 Brawl Stars — Гемы",
+  m_standoff: "🛠 Standoff 2",
+  m_blackrussia: "🛠 Black Russia",
+  m_grand: "🛠 GRAND Mobile",
+  m_matryoshka: "🛠 Матрёшка RP",
+  m_oxide: "🛠 Oxide (вручную)",
+  m_tiktok: "🛠 TikTok",
+  m_apple: "🛠 Apple",
+  m_mc_license: "🛠 Minecraft — Лицензия",
+  m_mc_coins: "🛠 Minecraft — Minecoins",
+  m_ps: "🛠 PlayStation USA",
 };
 
 function adminCatalogListKeyboard() {
@@ -4687,6 +4909,7 @@ async function handleAdminCallback(env, db, cq, a, b, c, lang) {
           continue;
         }
         for (const item of cat.items) {
+          if (itemProvider(item) === "manual") continue;
           if (itemProvider(item) === "mvp") {
             rows.push(`🟣 ${item.id} (${item.name}) → MVP: ${(await getMvpProductId(db, item)) || "НЕ ЗАДАН"}`);
             continue;
@@ -5736,7 +5959,7 @@ const mvpSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /* ---- Выбор поставщика ---- */
 
 function itemProvider(item) {
-  return item && item.provider === "mvp" ? "mvp" : "donix";
+  return item && item.provider === "mvp" ? "mvp" : item && item.provider === "manual" ? "manual" : "donix";
 }
 
 /* Поставщик заказа: берём из самого заказа (createOrder записывает его при создании).
@@ -5744,7 +5967,7 @@ function itemProvider(item) {
    "legacy": ни MVP, ни Donix их автоматически не выполняют — админ получает уведомление и решает вручную.
    Уже отправленные в Donix старые заказы остаются «donix» и спокойно доезжают через вебхук Donix. */
 function orderProvider(order) {
-  if (order && order.provider) return order.provider === "mvp" ? "mvp" : "donix";
+  if (order && order.provider) return order.provider === "mvp" ? "mvp" : order.provider === "manual" ? "manual" : "donix";
   if (order && String(order.category || "").startsWith("pubg_")) {
     const sentToDonix = order.donixOrderId || (order.items || []).some((l) => l && l.donixOrderId);
     return sentToDonix ? "donix" : "legacy";
@@ -6306,7 +6529,7 @@ async function syncProcessingOrders(env, db) {
     if (report.checked >= 40) break;
     const order = await getJSON(db, k.name);
     if (!order) continue;
-    if (orderProvider(order) === "legacy") continue;
+    if (orderProvider(order) === "legacy" || orderProvider(order) === "manual") continue;
     if (orderProvider(order) === "mvp") {
       // Заказы MVP сверяем с MVP (GET /orders/{number}), Donix про них ничего не знает.
       if (order.status !== "processing") continue;
@@ -6462,7 +6685,7 @@ async function routePaymentWebhook(env, db, request, ctx) {
 }
 
 function routeHealth() {
-  return new Response(JSON.stringify({ ok: true, service: "nurtilek-shop", time: new Date().toISOString() }), {
+  return new Response(JSON.stringify({ ok: true, service: "donpley", time: new Date().toISOString() }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -6533,7 +6756,7 @@ async function maState(db) {
   const prices = {};
   await Promise.all(
     Object.keys(CATALOG)
-      .filter((k) => k !== "tg_stars" && k !== "mvp_test")
+      .filter((k) => k !== "tg_stars" && k !== "mvp_test" && !(CATALOG[k] && CATALOG[k].manual))
       .map(async (ck) => {
         const items = await getResolvedItems(db, ck);
         for (const i of items) prices[`${ck}:${i.id}`] = i.price;
@@ -6583,7 +6806,22 @@ function maOrderView(o) {
       .map(([k, v]) => `${k}: ${v}`)
       .join("  ") || "—";
   const rc = o.category === "roblox" && o.status === "completed" && o.robloxCodes && o.robloxCodes[0] ? String(o.robloxCodes[0]) : undefined;
-  return { no: o.orderNumber, g: o.category === "roblox" ? o.itemName : `${cat ? cat.name : o.category}: ${o.itemName}`, d, p: fmtSom(o.total), st, rv: !!o.reviewed, rc };
+  const ud = o.uidData || {};
+  const ts = o.ts || {};
+  const ids = Object.entries(ud).filter(([k, v]) => k !== "Ник" && v != null && String(v) !== "").map(([k, v]) => [k, String(v)]);
+  return {
+    no: o.orderNumber,
+    g: o.category === "roblox" ? o.itemName : `${cat ? cat.name : o.category}: ${o.itemName}`,
+    d, p: fmtSom(o.total), st, rv: !!o.reviewed, rc,
+    nick: ud["Ник"] ? String(ud["Ник"]) : undefined,
+    ids,
+    pm: o.paymentMethod === "balance" ? "balance" : "card",
+    cr: o.createdAt || undefined,
+    pd: ts.paid || undefined,
+    pr: ts.proc || undefined,
+    dn: o.status === "completed" ? ts.done || o.updatedAt : undefined,
+    fl: st === "bad" ? ts.fail || o.updatedAt : undefined,
+  };
 }
 
 /* Проверка ID игрока и получение ника (так же, как в боте). */
@@ -6620,6 +6858,7 @@ async function maCreateOrder(env, db, tu, b, ctx) {
   const cat = CATALOG[catKey];
   const isRbx = catKey === "roblox";
   if (!cat && !isRbx) return { error: "bad_input" };
+  if (cat && cat.manual) return { error: "bad_input" }; // ручные игры — только в боте
   if (catKey === "mvp_test" && !(await isMvpTestEnabled(db))) return { error: "unavailable" };
   if (catKey === "freefire" && (await isFreefireMaintenance(db))) return { error: "maintenance" };
   if (catKey === "tg_stars" && STARS_TEMP_DISABLED) return { error: "unavailable" };
@@ -6790,7 +7029,7 @@ async function maCreateOrder(env, db, tu, b, ctx) {
       amount: round2(order.total),
       paymentId: order.internalId,
       redirectUrl: (tu.guest || tu.web) && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app#orders` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
-      description: `Nurtilek Shop order ${order.orderNumber}`,
+      description: `DonPley order ${order.orderNumber}`,
       lang,
     });
   } catch (e) {
@@ -6972,7 +7211,7 @@ async function handleMiniApi(env, db, request, ctx) {
           amount,
           paymentId: topupId,
           redirectUrl: tu.web && env.APP_BASE_URL ? `${String(env.APP_BASE_URL).replace(/\/$/, "")}/app` : botName ? `https://t.me/${botName}` : env.APP_BASE_URL,
-          description: `Nurtilek Shop top-up ${topupId}`,
+          description: `DonPley top-up ${topupId}`,
           lang,
         });
       } catch (e) {
