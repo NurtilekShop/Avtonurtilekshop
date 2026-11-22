@@ -725,7 +725,7 @@ const MANUAL_CATS = {
     items: mkManual("tt", [["80", "🪙 80 Монет", 124], ["400", "🪙 400 Монет", 567], ["800", "🪙 800 Монет", 1134], ["2040", "🪙 2040 Монет", 2735], ["4100", "🪙 4100 Монет", 5369]]),
   },
   m_apple: {
-    manual: true, name: "Apple", inputType: "manual", uidLabel: "Связь",
+    manual: true, noInput: true, name: "Apple", inputType: "manual", uidLabel: "Связь",
     prompt: "🍎 Apple\n\nНапишите ваш <b>@username в Telegram</b>, куда оператор отправит код. Если юзернейма нет — напишите «в боте».",
     items: mkManual("ap", [["2", "$2", 210], ["5", "$5", 505], ["10", "$10", 1005], ["15", "$15", 1500], ["20", "$20", 2000], ["25", "$25", 2500], ["30", "$30", 3000], ["35", "$35", 3700], ["40", "$40", 4000], ["50", "$50", 5000], ["60", "$60", 5968], ["70", "$70", 6964], ["80", "$80", 8107], ["90", "$90", 9304], ["100", "$100", 10004], ["150", "$150", 15000], ["200", "$200", 20000], ["250", "$250", 25000], ["300", "$300", 30000], ["400", "$400", 40000], ["500", "$500", 50000]]),
   },
@@ -740,7 +740,7 @@ const MANUAL_CATS = {
     items: mkManual("mcc", [["330", "🟡 330 Minecoins", 425], ["1720", "🟡 1720 Minecoins", 854], ["3500", "🟡 3500 Minecoins", 2084], ["8800", "🟡 8800 Minecoins", 5562]]),
   },
   m_ps: {
-    manual: true, name: "PlayStation USA", inputType: "manual", uidLabel: "Связь",
+    manual: true, noInput: true, name: "PlayStation USA", inputType: "manual", uidLabel: "Связь",
     prompt: "🎮 PlayStation (USA)\n\nНапишите ваш <b>@username в Telegram</b>, куда оператор отправит код. Если юзернейма нет — напишите «в боте».",
     items: mkManual("ps", [["1", "$1", 139], ["5", "$5", 529], ["10", "$10", 1000], ["15", "$15", 1500], ["25", "$25", 2500], ["50", "$50", 5000], ["75", "$75", 7500], ["100", "$100", 9879], ["150", "$150", 14319]]),
   },
@@ -2027,7 +2027,43 @@ function manualMenuKeyboard() {
     [btn("⬅️ Назад", "menu:games"), btn("🏠 Главное меню", "menu:home")],
   ]);
 }
-const MANUAL_MENU_TEXT = "🛠 <b>Игры вручную</b>\n\n✅ Оплатили — оператор выдал лично и написал вам\n🔥 Выгодные цены в сомах\n💳 Оплата с баланса или Finik QR / картой\n\nВыберите игру или сервис 👇";
+const MANUAL_MENU_TEXT = "🛠 <b>Игры вручную</b>\n\n✅ Выберите товар и нажмите «Оплатить» — откроется чат с оператором, текст заказа уже готов\n⚡ Оператор отвечает быстро, подскажет как оплатить и выдаст заказ лично\n🔥 Выгодные цены в сомах\n\nВыберите игру или сервис 👇";
+
+
+/* Ручной заказ: без оплаты в боте. Клиент видит итог, «Оплатить» открывает чат с оператором с готовым текстом, «Отменить» отменяет. */
+function sendManualSummary(env, lang, chatId, messageId, userId, from, data, uidData) {
+  const kg = lang === "kg";
+  const cat = CATALOG[data.catKey] || {};
+  const admin = String(env.ADMIN_USERNAME || "nurt1lek_ff").replace(/^@/, "");
+  const dataLines = uidData ? Object.entries(uidData).map(([k, v]) => `${k}: ${v}`) : [];
+  const dmText = [
+    "Здравствуйте! Хочу заказать в DonPley.",
+    `Игра/сервис: ${cat.name || data.catKey}`,
+    `Товар: ${data.itemName}`,
+    `Сумма: ${fmtSom(data.price)} сом`,
+    ...dataLines,
+    `Мой Telegram ID: ${userId}${from && from.username ? ` (@${from.username})` : ""}`,
+  ].join("\n");
+  const shown = [
+    kg ? "🧾 <b>Буюртмаңыз</b>" : "🧾 <b>Ваш заказ</b>",
+    "",
+    `🎮 ${escHtml(cat.name || data.catKey)}`,
+    `🛒 ${escHtml(data.itemName)}`,
+    `💰 ${kg ? "Сумма" : "Сумма"}: <b>${fmtSom(data.price)} сом</b>`,
+    ...dataLines.map((l) => `📝 ${escHtml(l)}`),
+    "",
+    kg
+      ? "«Төлөө» баскычын басыңыз — операторго чат ачылат, текст даяр, жөн гана жөнөтүңүз. Төлөм боюнча оператор өзү жооп берет."
+      : "Нажмите «Оплатить» — откроется чат с оператором, текст уже готов, вам останется только отправить. Как оплатить, подскажет оператор.",
+  ].join("\n");
+  const kb = {
+    inline_keyboard: [
+      [{ text: kg ? "💳 Төлөө" : "💳 Оплатить", url: `https://t.me/${admin}?text=${encodeURIComponent(dmText)}` }],
+      [{ text: kg ? "❌ Жокко чыгаруу" : "❌ Отменить", callback_data: "mancancel" }],
+    ],
+  };
+  return messageId ? editMessage(env, chatId, messageId, shown, kb) : sendMessage(env, chatId, shown, kb);
+}
 
 function pubgMenuKeyboard(lang) {
   return ikb([
@@ -2668,6 +2704,13 @@ async function handleCallbackQuery(env, db, cq) {
       return answerCallback(env, cq.id);
     }
 
+    if (ns === "mancancel") {
+      await clearState(db, userId);
+      await clearCart(db, userId);
+      await editMessage(env, chatId, messageId, lang === "kg" ? "❌ Буюртма жокко чыгарылды." : "❌ Заказ отменён.", ikb([[btn(lang === "kg" ? "🛠 Кол менен оюндар" : "🛠 Игры вручную", "menu:manual")], [btn(t(lang, "btn_home"), "menu:home")]]));
+      return answerCallback(env, cq.id);
+    }
+
     if (ns === "cartnext") {
       const catKey = a;
       const cat = CATALOG[catKey];
@@ -2700,7 +2743,10 @@ async function handleCallbackQuery(env, db, cq) {
         inputType: cat.inputType,
         items: lines,
       };
-      if (cat.manual) {
+      if (cat.manual && cat.noInput) {
+        await clearState(db, userId);
+        await sendManualSummary(env, lang, chatId, messageId, userId, cq.from, stateData, null);
+      } else if (cat.manual) {
         await setState(db, userId, { step: "await_uid", data: stateData });
         await editMessage(env, chatId, messageId, cat.prompt || "Напишите данные для выдачи заказа:", backHomeKeyboard(lang));
       } else if (cat.inputType === "ml_id") {
@@ -4202,6 +4248,11 @@ async function handleMessage(env, db, msg) {
       } else {
         uidData = { UID: uid };
       }
+    }
+    if (cat && cat.manual) {
+      await clearState(db, userId);
+      await sendManualSummary(env, lang, chatId, null, userId, msg.from, state.data, uidData);
+      return;
     }
     state.data.uidData = uidData;
     if (cat && cat.needsServer) {
