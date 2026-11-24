@@ -425,7 +425,7 @@ const CATALOG = {
     items: [
       { id: "ff_110", name: "💎 110", price: 75, sku: "110-алмазов", fixed: true },
       { id: "ff_341", name: "💎 341", price: 228, sku: "341-алмаз", fixed: true },
-      { id: "ff_572", name: "💎 572", price: 370, sku: "572-алмаза", fixed: true },
+      { id: "ff_572", name: "💎 572", price: 370, provider: "mvp", providerProductId: "ff.cis.dia.572", fixed: true },
       { id: "ff_1166", name: "💎 1166", price: 745, sku: "1166-алмазов", fixed: true },
       { id: "ff_2398", name: "💎 2398", price: 1459, sku: "2398-алмазов", fixed: true },
       { id: "ff_6160", name: "💎 6160", price: 3702, sku: "6160-алмазов", fixed: true },
