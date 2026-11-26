@@ -1044,6 +1044,37 @@ function btn(text, callback_data) {
   return { text, callback_data };
 }
 
+/* ===== Кастомные эмодзи-логотипы на кнопках (Bot API: icon_custom_emoji_id) =====
+   USE_EMOJI_LOGOS = false -> всё как раньше, обычные эмодзи в тексте кнопок. */
+const USE_EMOJI_LOGOS = true;
+const LOGO = {
+  donpley: "5206262530468524817",
+  support: "5206537369720762584",
+  pubg: "5206572025811874302",
+  tg: "5206351122758939582",
+  roblox: "5206659089093929863",
+  discord: "5206620125150622626",
+  steam: "5206643738880815808",
+  freefire: "5206479752734486068",
+  genshin: "5206224992454352384",
+  hsr: "5206585314440687392",
+  brawl: "5206371794436533584",
+  ps: "5206419670436982538",
+  standoff: "5206599419113287861",
+  tiktok: "5206182094321003667",
+  apple: "5206211197019400495",
+};
+/* Вешает логотип на готовую кнопку: убирает обычный эмодзи в начале текста и ставит кастомный. */
+function lobj(button, logo) {
+  const id = LOGO[logo];
+  if (!USE_EMOJI_LOGOS || !id) return button;
+  const text = String(button.text).replace(/^[^\p{L}\p{N}]+/u, "") || button.text;
+  return { ...button, text, icon_custom_emoji_id: id };
+}
+function lbtn(text, callback_data, logo) {
+  return lobj(btn(text, callback_data), logo);
+}
+
 /* ================= DONIX API ================= */
 
 async function donixRequest(env, path, method = "GET", body = null) {
@@ -1963,7 +1994,7 @@ function twoPerRow(buttons) {
 
 function mainMenuKeyboard(lang) {
   return ikb([
-    ...(APP_URL ? [[{ text: "🛍 Открыть магазин", web_app: { url: APP_URL } }]] : []),
+    ...(APP_URL ? [[lobj({ text: "🛍 Открыть магазин", web_app: { url: APP_URL } }, "donpley")]] : []),
     [btn(t(lang, "btn_games"), "menu:games")],
     [btn(t(lang, "btn_wallet"), "wallet:home"), btn(t(lang, "btn_orders"), "orders:list")],
     [btn(t(lang, "btn_promo"), "promo:enter"), btn(t(lang, "btn_profile"), "profile:home")],
@@ -1973,7 +2004,7 @@ function mainMenuKeyboard(lang) {
       { text: t(lang, "btn_channel"), url: "https://t.me/DonPley" },
     ],
     [
-      { text: t(lang, "btn_support"), url: "https://t.me/nurt1lek_ff" },
+      lobj({ text: t(lang, "btn_support"), url: "https://t.me/nurt1lek_ff" }, "support"),
       btn(t(lang, "btn_lang"), "lang:menu"),
     ],
   ]);
@@ -1984,24 +2015,24 @@ function mainMenuKeyboard(lang) {
 async function gamesMenuKeyboard(db, lang) {
   const rbxOn = await isRobloxEnabled(db);
   const items = [
-    btn(t(lang, "btn_freefire"), "cat:freefire"),
-    btn(t(lang, "btn_pubg"), "menu:pubg"),
+    lbtn(t(lang, "btn_freefire"), "cat:freefire", "freefire"),
+    lbtn(t(lang, "btn_pubg"), "menu:pubg", "pubg"),
     btn(t(lang, "btn_mlbb"), "cat:mlbb"),
     btn(t(lang, "btn_codm"), "cat:codm"),
-    btn(t(lang, "btn_genshin"), "cat:genshin"),
+    lbtn(t(lang, "btn_genshin"), "cat:genshin", "genshin"),
   ];
-  if (rbxOn) items.push(btn(t(lang, "btn_roblox"), "cat:roblox"));
+  if (rbxOn) items.push(lbtn(t(lang, "btn_roblox"), "cat:roblox", "roblox"));
   items.push(
-    btn(t(lang, "btn_hsr"), "cat:hsr"),
+    lbtn(t(lang, "btn_hsr"), "cat:hsr", "hsr"),
     btn(t(lang, "btn_arena"), "cat:arena"),
     btn(t(lang, "btn_rivals"), "cat:rivals"),
     btn(t(lang, "btn_oxide"), "cat:oxide")
   );
   const rows = twoPerRow(items);
   // Сервисы всегда в самом низу, каждый отдельной строкой: Telegram, Discord, Steam.
-  rows.push([btn(t(lang, "btn_tg"), "menu:tg")]);
-  rows.push([btn(t(lang, "btn_discord"), "cat:discord")]);
-  rows.push([btn(t(lang, "btn_steam"), "cat:steam")]);
+  rows.push([lbtn(t(lang, "btn_tg"), "menu:tg", "tg")]);
+  rows.push([lbtn(t(lang, "btn_discord"), "cat:discord", "discord")]);
+  rows.push([lbtn(t(lang, "btn_steam"), "cat:steam", "steam")]);
   if (await isMvpTestEnabled(db)) rows.push([btn(t(lang, "btn_mvp_test"), "cat:mvp_test")]);
   rows.push([btn(t(lang, "btn_back"), "menu:games"), btn(t(lang, "btn_home"), "menu:home")]);
   return ikb(rows);
@@ -2019,11 +2050,11 @@ const GAMES_CHOOSER_TEXT = "🎮 <b>Игры и сервисы</b>\n\n🛠 <b>И
 
 function manualMenuKeyboard() {
   return ikb([
-    [btn("🔥 Brawl Stars", "menu:brawl"), btn("🔫 Standoff 2", "cat:m_standoff")],
+    [lbtn("🔥 Brawl Stars", "menu:brawl", "brawl"), lbtn("🔫 Standoff 2", "cat:m_standoff", "standoff")],
     [btn("🚗 Black Russia", "cat:m_blackrussia"), btn("🚘 GRAND Mobile", "cat:m_grand")],
     [btn("🪆 Матрёшка RP", "cat:m_matryoshka"), btn("🏝 Oxide Survival", "cat:m_oxide")],
-    [btn("🎵 TikTok", "cat:m_tiktok"), btn("⛏ Minecraft", "menu:mc")],
-    [btn("🍎 Apple", "cat:m_apple"), btn("🎮 PlayStation", "cat:m_ps")],
+    [lbtn("🎵 TikTok", "cat:m_tiktok", "tiktok"), btn("⛏ Minecraft", "menu:mc")],
+    [lbtn("🍎 Apple", "cat:m_apple", "apple"), lbtn("🎮 PlayStation", "cat:m_ps", "ps")],
     [btn("⬅️ Назад", "menu:games"), btn("🏠 Главное меню", "menu:home")],
   ]);
 }
